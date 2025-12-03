@@ -6,12 +6,15 @@ import Footer from "../components/footer";
 import AboutUs from "./AboutUs";
 import { Calendar, QrCode, Clock, Zap, Shield, Users, Smartphone, ChevronLeft, ChevronRight, ArrowRight, Star, Trophy, Sparkles } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import ForgotPassword from "../components/ForgotPassword";
 
 function Home({ onLoginSuccess }) {
   const [currentPage, setCurrentPage] = useState("home"); // "home" or "about"
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
-
+  const [showLogin, setShowLogin] = useState(false);
+  const [showRegister, setShowRegister] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [images, setImages] = useState({
     LOGO: [],
     HOME: [],
@@ -19,7 +22,7 @@ function Home({ onLoginSuccess }) {
     SLIDE: [],
     CENTER: []
   });
-  
+
   const [currentIndexes, setCurrentIndexes] = useState({
     HOME: 0,
     SLIDE: 0,
@@ -153,7 +156,7 @@ function Home({ onLoginSuccess }) {
           className={`w-full h-full object-cover transition-all duration-700 ${className}`}
           style={{ objectFit: 'cover', minHeight: '100%', minWidth: '100%' }}
         />
-        
+
         {showControls && images.length > 1 && (
           <>
             <button
@@ -168,17 +171,16 @@ function Home({ onLoginSuccess }) {
             >
               <ChevronRight className="w-5 h-5" />
             </button>
-            
+
             <div className="absolute z-20 flex space-x-2 -translate-x-1/2 bottom-6 left-1/2">
               {images.map((_, index) => (
                 <button
                   key={index}
                   onClick={(e) => handleDotClick(e, index)}
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    index === currentIndex 
-                      ? 'bg-white w-8 shadow-lg' 
-                      : 'bg-white/40 w-1.5 hover:bg-white/60'
-                  }`}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${index === currentIndex
+                    ? 'bg-white w-8 shadow-lg'
+                    : 'bg-white/40 w-1.5 hover:bg-white/60'
+                    }`}
                 />
               ))}
             </div>
@@ -191,41 +193,57 @@ function Home({ onLoginSuccess }) {
   if (currentPage === "about") {
     return (
       <div className="font-sans text-gray-900 bg-white">
-         <Header
-        onLoginClick={() => setShowLoginModal(true)}
-        onRegisterClick={() => setShowRegisterModal(true)}
-        onAboutClick={() => {
-          setCurrentPage("about");
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }}
-        onHomeClick={() => {
-          setCurrentPage("home");
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }}
-        logoImage={images.LOGO.length > 0 ? images.LOGO[0].image : null}
-      />
+        <Header
+          onLoginClick={() => setShowLoginModal(true)}
+          onRegisterClick={() => setShowRegisterModal(true)}
+          onAboutClick={() => {
+            setCurrentPage("about");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          onHomeClick={() => {
+            setCurrentPage("home");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          logoImage={images.LOGO.length > 0 ? images.LOGO[0].image : null}
+        />
         <AboutUs onHomeClick={() => setCurrentPage("about")} />
-      
 
+
+
+        {/* Inside the AboutUs section (when currentPage === "about") */}
 
         <Login
-          isOpen={showLoginModal}
-          onClose={() => setShowLoginModal(false)}
+          isOpen={showLogin}
+          onClose={() => setShowLogin(false)}
           onLoginSuccess={onLoginSuccess}
           onSwitchToRegister={() => {
-            setShowLoginModal(false);
-            setShowRegisterModal(true);
+            setShowLogin(false);
+            setShowRegister(true);
+          }}
+          onSwitchToForgotPassword={() => {
+            setShowLogin(false);
+            setShowForgotPassword(true);
           }}
         />
 
         <Register
-          isOpen={showRegisterModal}
-          onClose={() => setShowRegisterModal(false)}
+          isOpen={showRegister}
+          onClose={() => setShowRegister(false)}
           onSwitchToLogin={() => {
-            setShowRegisterModal(false);
-            setShowLoginModal(true);
+            setShowRegister(false);
+            setShowLogin(true);
           }}
         />
+
+        <ForgotPassword
+          isOpen={showForgotPassword}
+          onClose={() => setShowForgotPassword(false)}
+          onBackToLogin={() => {
+            setShowForgotPassword(false);
+            setShowLogin(true);
+          }}
+        />
+
       </div>
     );
   }
@@ -257,18 +275,18 @@ function Home({ onLoginSuccess }) {
                 <Sparkles className="w-4 h-4 text-yellow-400" />
                 <span className="text-sm font-medium">Premium Billiard Experience</span>
               </div>
-              
+
               <h1 className="text-5xl font-black leading-tight lg:text-7xl">
                 Reserve Your
                 <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">
                   Perfect Game
                 </span>
               </h1>
-              
+
               <p className="text-xl leading-relaxed text-gray-300">
                 Book your table online, skip the wait, and enjoy your game! Experience the future of billiard reservations with our modern platform.
               </p>
-              
+
               <div className="flex flex-col gap-4 sm:flex-row">
                 <button
                   onClick={() => setShowRegisterModal(true)}
@@ -510,7 +528,7 @@ function Home({ onLoginSuccess }) {
       </section>
 
       {/* Footer Component */}
-         <Footer 
+      <Footer
         onHomeClick={() => {
           setCurrentPage("home");
           window.scrollTo({ top: 0, behavior: "smooth" });
@@ -521,24 +539,38 @@ function Home({ onLoginSuccess }) {
         }}
       />
       {/* Modals */}
-      <Login
-        isOpen={showLoginModal}
-        onClose={() => setShowLoginModal(false)}
-        onLoginSuccess={onLoginSuccess}
-        onSwitchToRegister={() => {
-          setShowLoginModal(false);
-          setShowRegisterModal(true);
-        }}
-      />
+  {/* Modals */}
+<Login
+  isOpen={showLoginModal}
+  onClose={() => setShowLoginModal(false)}
+  onLoginSuccess={onLoginSuccess}
+  onSwitchToRegister={() => {
+    setShowLoginModal(false);
+    setShowRegisterModal(true);
+  }}
+  onSwitchToForgotPassword={() => {
+    setShowLoginModal(false);
+    setShowForgotPassword(true);
+  }}
+/>
 
-      <Register
-        isOpen={showRegisterModal}
-        onClose={() => setShowRegisterModal(false)}
-        onSwitchToLogin={() => {
-          setShowRegisterModal(false);
-          setShowLoginModal(true);
-        }}
-      />
+<Register
+  isOpen={showRegisterModal}
+  onClose={() => setShowRegisterModal(false)}
+  onSwitchToLogin={() => {
+    setShowRegisterModal(false);
+    setShowLoginModal(true);
+  }}
+/>
+
+<ForgotPassword
+  isOpen={showForgotPassword}
+  onClose={() => setShowForgotPassword(false)}
+  onBackToLogin={() => {
+    setShowForgotPassword(false);
+    setShowLoginModal(true);
+  }}
+/>
 
       <style jsx>{`
         @keyframes blob {
