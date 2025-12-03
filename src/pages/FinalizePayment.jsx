@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CreditCard, Clock, DollarSign, User, Calendar, CheckCircle, XCircle, Eye, RefreshCw, Plus } from 'lucide-react';
+import { CreditCard, Clock, Hourglass, User, Calendar, CheckCircle, XCircle, Eye, RefreshCw, Plus } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import Swal from 'sweetalert2';
 
@@ -708,16 +708,6 @@ const handleEndSession = async (id) => {
       setSyncing(false);
     }
   };
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-500 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-gray-700 font-semibold text-lg">Loading payment data...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-6">
@@ -746,7 +736,8 @@ const handleEndSession = async (id) => {
         <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-orange-100">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-amber-500 rounded-xl flex items-center justify-center">
-              <DollarSign className="text-white" size={24} />
+           <Hourglass className="text-white" size={24} />
+
             </div>
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Pending</h2>
