@@ -281,7 +281,7 @@ const isTimeInPast = (selectedTime, date) => {
     .select('start_time')
     .eq('table_id', tableId)
     .eq('reservation_date', date)
-    .not('status', 'in', '(cancelled,completed)')
+   .neq('status', 'cancelled')
     .gt('start_time', dbTime)
     .order('start_time', { ascending: true })
     .limit(1);
@@ -387,7 +387,7 @@ const getAvailableTimes = async (tableId, date) => {
     .select('start_time, time_end')
     .eq('table_id', tableId)
     .eq('reservation_date', date)
-    .not('status', 'in', '(cancelled,completed)')
+   .neq('status', 'cancelled')
     .order('start_time', { ascending: true });
 
   if (reservationError) {
@@ -404,9 +404,6 @@ const getAvailableTimes = async (tableId, date) => {
   const timeSlots = [];
   let currentHour = openTime.hour;
   let currentMinute = openTime.minute;
-  
-  const hasExistingReservations = reservations.length > 0;
-  let useHourlyIntervals = !hasExistingReservations;
 
   while (currentHour < closeTime.hour || (currentHour === closeTime.hour && currentMinute < closeTime.minute)) {
     const period = currentHour >= 12 ? 'PM' : 'AM';
@@ -416,15 +413,30 @@ const getAvailableTimes = async (tableId, date) => {
     
     const isPast = date === today && isTimeInPast(timeString, date);
     
-    // Check if this time would create a gap < 1 hour
+    // ✅ GAP PREVENTION LOGIC
     let createsGap = false;
     const slotMinutes = timeToMinutes(dbTime);
     
+    // 1. Check gap from opening time (no 30-min gap after opening)
+    const openMinutes = openTime.hour * 60 + openTime.minute;
+    const gapFromOpen = slotMinutes - openMinutes;
+    if (gapFromOpen > 0 && gapFromOpen < 60) {
+      createsGap = true;
+    }
+    
+    // 2. Check gap BEFORE closing time (need at least 1 hour before close)
+    const closeMinutes = closeTime.hour * 60 + closeTime.minute;
+    const timeUntilClose = closeMinutes - slotMinutes;
+    if (timeUntilClose < 60) {
+      createsGap = true;
+    }
+    
+    // 3. Check gap after each reservation (no 30-min gap after a reservation ends)
     for (const reservation of reservations) {
       const resEndMinutes = timeToMinutes(reservation.time_end);
-      const gap = slotMinutes - resEndMinutes;
+      const gapAfterRes = slotMinutes - resEndMinutes;
       
-      if (gap > 0 && gap < 60) {
+      if (gapAfterRes > 0 && gapAfterRes < 60) {
         createsGap = true;
         break;
       }
@@ -437,15 +449,11 @@ const getAvailableTimes = async (tableId, date) => {
       createsGap: createsGap
     });
     
-    if (useHourlyIntervals) {
+    // Move to next 30-minute interval
+    currentMinute += 30;
+    if (currentMinute >= 60) {
+      currentMinute = 0;
       currentHour += 1;
-      useHourlyIntervals = false;
-    } else {
-      currentMinute += 30;
-      if (currentMinute >= 60) {
-        currentMinute = 0;
-        currentHour += 1;
-      }
     }
     
     if (currentHour > closeTime.hour || (currentHour === closeTime.hour && currentMinute >= closeTime.minute)) {
@@ -462,7 +470,7 @@ const getAvailableTimes = async (tableId, date) => {
       };
     }
     
-    // ✅ If it creates a gap, mark as "available: false" but keep createsGap flag
+    // ✅ If it creates a gap, mark as unavailable with gap flag
     if (slot.createsGap) {
       return {
         time: slot.time,
@@ -662,7 +670,7 @@ const handleReservation = async () => {
   const incompleteTables = [];
   for (const table of selectedTables) {
     const formData = tableFormData[table.table_id];
-    if (!formData || !formData.date || !formData.time) {
+    if (!formData || !formData.date || !formData.time || !formData.duration) {
       incompleteTables.push(table.table_name);
     }
   }
@@ -672,7 +680,7 @@ const handleReservation = async () => {
       icon: 'warning',
       title: 'Missing Information',
       html: `
-        <p>Please select date and time for:</p>
+        <p>Please select date, time, and duration for:</p>
         <p><strong>${incompleteTables.join(', ')}</strong></p>
       `,
     });
@@ -705,7 +713,6 @@ const handleReservation = async () => {
 
       const selectedDuration = durations.find(d => d.id === parseInt(formData.duration));
       
-      // 🔥 CONVERT time string to HH:MM:SS format for database
       const startTimeFormatted = formData.time; 
 
       // Calculate end time
@@ -745,8 +752,8 @@ const handleReservation = async () => {
       reservationsData.push({
         table: table,
         date: formData.date,
-        time: startTimeFormatted,  // 🔥 Use formatted time
-        timeEnd: endTimeData,       // 🔥 This is already in TIME format from RPC
+        time: startTimeFormatted,
+        timeEnd: endTimeData,
         duration: selectedDuration,
         billiard_type: table.info.billiard_type
       });
