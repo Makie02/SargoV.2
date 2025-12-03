@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { QrCode, CheckCircle, X, AlertCircle, FileImage, FolderOpen } from 'lucide-react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from '../lib/supabaseClient';
 import Swal from 'sweetalert2';
 import html2canvas from 'html2canvas';
@@ -15,27 +15,117 @@ export default function QRCheckInPage() {
   const [gcashRefNo, setGcashRefNo] = useState('');
   const [scannerActive, setScannerActive] = useState(false);
   const [showProofModal, setShowProofModal] = useState(false);
-  const scannerRef = useRef(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [cameraDevices, setCameraDevices] = useState([]);
+  const [selectedCamera, setSelectedCamera] = useState(null);
+  const html5QrCodeRef = useRef(null);
   const cardRef = useRef(null);
 
   // Fetch reservations on load
   useEffect(() => {
     fetchReservations();
+    checkCameras();
   }, []);
 
-  // Load QR Scanner
-  useEffect(() => {
-    let scanner;
-    if (scannerActive && scannerRef.current) {
-      scanner = new Html5QrcodeScanner(
-        "qr-reader",
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        false
-      );
-      scanner.render(onScanSuccess, onScanFailure);
+  // Check available cameras
+  const checkCameras = async () => {
+    try {
+      const devices = await Html5Qrcode.getCameras();
+      setCameraDevices(devices);
+      if (devices && devices.length > 0) {
+        // Default to back camera if available, otherwise first camera
+        const backCamera = devices.find(d => d.label.toLowerCase().includes('back')) || devices[0];
+        setSelectedCamera(backCamera.id);
+      }
+    } catch (err) {
+      console.error("Error checking cameras:", err);
     }
+  };
+
+  // Handle QR Scanner
+  useEffect(() => {
+    const startScanner = async () => {
+      if (scannerActive && !isScanning) {
+        // Check if camera is available
+        if (cameraDevices.length === 0) {
+          Swal.fire({
+            icon: 'error',
+            title: 'No Camera Found',
+            html: `
+              <p>No camera detected on this device.</p>
+              <br>
+              <p><strong>Solutions:</strong></p>
+              <ul style="text-align: left; margin-left: 20px;">
+                <li>Make sure your camera is connected and enabled</li>
+                <li>Check if another app is using the camera</li>
+                <li>Try refreshing the page</li>
+                <li>Use the manual search below instead</li>
+              </ul>
+            `,
+            confirmButtonColor: '#3085d6'
+          });
+          setScannerActive(false);
+          return;
+        }
+
+        try {
+          const html5QrCode = new Html5Qrcode("qr-reader");
+          html5QrCodeRef.current = html5QrCode;
+
+          // Use selected camera or default
+          const cameraId = selectedCamera || cameraDevices[0].id;
+
+          await html5QrCode.start(
+            cameraId,
+            {
+              fps: 10,
+              qrbox: { width: 250, height: 250 }
+            },
+            onScanSuccess,
+            onScanError
+          );
+          
+          setIsScanning(true);
+        } catch (err) {
+          console.error("Error starting scanner:", err);
+          
+          let errorMessage = 'Unable to access camera. Please check permissions.';
+          
+          if (err.toString().includes('NotFoundError')) {
+            errorMessage = 'Camera not found. Please make sure your camera is connected and enabled.';
+          } else if (err.toString().includes('NotAllowedError')) {
+            errorMessage = 'Camera access denied. Please allow camera permissions in your browser settings.';
+          } else if (err.toString().includes('NotReadableError')) {
+            errorMessage = 'Camera is already in use by another application. Please close other apps using the camera.';
+          }
+          
+          Swal.fire({
+            icon: 'error',
+            title: 'Camera Error',
+            text: errorMessage,
+            confirmButtonColor: '#3085d6'
+          });
+          setScannerActive(false);
+          setIsScanning(false);
+        }
+      }
+    };
+
+    startScanner();
+
     return () => {
-      if (scanner) scanner.clear().catch(console.error);
+      if (html5QrCodeRef.current && isScanning) {
+        html5QrCodeRef.current
+          .stop()
+          .then(() => {
+            html5QrCodeRef.current = null;
+            setIsScanning(false);
+          })
+          .catch(err => {
+            console.error("Error stopping scanner:", err);
+            setIsScanning(false);
+          });
+      }
     };
   }, [scannerActive]);
 
@@ -55,11 +145,37 @@ export default function QRCheckInPage() {
 
   const onScanSuccess = (decodedText) => {
     handleSearch(decodedText);
-    setScannerActive(false);
+    stopScanner();
   };
 
-  const onScanFailure = (error) => {
-    console.warn('QR scan failed:', error);
+  const onScanError = (error) => {
+    // Silent - normal scanning errors
+  };
+
+  const stopScanner = async () => {
+    if (html5QrCodeRef.current && isScanning) {
+      try {
+        await html5QrCodeRef.current.stop();
+        html5QrCodeRef.current = null;
+        setIsScanning(false);
+        setScannerActive(false);
+      } catch (err) {
+        console.error("Error stopping scanner:", err);
+        setIsScanning(false);
+        setScannerActive(false);
+      }
+    } else {
+      setScannerActive(false);
+      setIsScanning(false);
+    }
+  };
+
+  const toggleScanner = async () => {
+    if (scannerActive) {
+      await stopScanner();
+    } else {
+      setScannerActive(true);
+    }
   };
 
   const handleSearch = async (query = searchQuery) => {
@@ -89,7 +205,6 @@ export default function QRCheckInPage() {
   };
 
   const generateReferenceNumber = () => {
-    // Format: YYYYMMDDHHmmss + 4 random digits
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -108,15 +223,12 @@ export default function QRCheckInPage() {
     const paymentMethod = selectedReservation.paymentMethod;
     const paymentType = selectedReservation.payment_type;
 
-    // If payment method is GCash, validate reference number
     if (paymentMethod === 'GCash' && !gcashRefNo.trim()) {
       return Swal.fire("Error", "Please enter GCash Reference Number", "error");
     }
 
-    // If payment method is Cash and payment type is Full Payment
     if (paymentMethod === 'Cash' && paymentType === 'Full Payment') {
       try {
-        // Update status to approved and payment_status to true with reference number
         const { error } = await supabase
           .from('reservation')
           .update({ 
@@ -150,7 +262,6 @@ export default function QRCheckInPage() {
         Swal.fire("Error", "Check-in failed. Please try again.", "error");
       }
     } else if (paymentMethod === 'GCash') {
-      // For GCash payment, update with gcash reference number
       try {
         const { error } = await supabase
           .from('reservation')
@@ -184,7 +295,6 @@ export default function QRCheckInPage() {
         Swal.fire("Error", "Check-in failed. Please try again.", "error");
       }
     } else {
-      // For other payment methods/types, just update status to approved
       try {
         const { error } = await supabase
           .from('reservation')
@@ -212,7 +322,6 @@ export default function QRCheckInPage() {
     }
   };
 
-  // SAVE AS IMAGE
   const saveAsImage = async () => {
     const card = cardRef.current;
 
@@ -246,7 +355,6 @@ export default function QRCheckInPage() {
     link.click();
   };
 
-  // DOWNLOAD PDF
   const downloadPDF = () => {
     const pdf = new jsPDF('p', 'mm', 'a4');
     const card = cardRef.current;
@@ -271,21 +379,45 @@ export default function QRCheckInPage() {
       <div className="bg-white shadow-xl rounded-2xl p-6 w-[430px] h-[600px]">
         <h1 className="text-2xl font-bold text-gray-800 mb-4">QR Code Verification</h1>
 
-        {scannerActive ? (
-          <div id="qr-reader" ref={scannerRef} className="rounded-xl overflow-hidden"></div>
-        ) : (
-          <div className="bg-gray-100 rounded-xl p-8 border-2 border-dashed border-gray-300 h-[250px] flex flex-col justify-center items-center">
-            <QrCode size={50} className="text-gray-400" />
-            <p className="text-gray-500 text-sm mt-2">Camera Preview</p>
-          </div>
-        )}
+        <div className="rounded-xl overflow-hidden mb-4" style={{ height: '250px' }}>
+          {scannerActive ? (
+            <div id="qr-reader" className="w-full h-full"></div>
+          ) : (
+            <div className="bg-gray-100 rounded-xl p-8 border-2 border-dashed border-gray-300 h-full flex flex-col justify-center items-center">
+              <QrCode size={50} className="text-gray-400" />
+              <p className="text-gray-500 text-sm mt-2">Camera Preview</p>
+              <p className="text-gray-400 text-xs mt-1">Click "Start Scanner" to begin</p>
+            </div>
+          )}
+        </div>
 
         <button
-          onClick={() => setScannerActive(!scannerActive)}
-          className="w-full mt-4 px-4 py-3 bg-black text-white rounded-xl text-sm font-semibold"
+          onClick={toggleScanner}
+          disabled={cameraDevices.length === 0}
+          className={`w-full px-4 py-3 rounded-xl text-sm font-semibold transition ${
+            cameraDevices.length === 0
+              ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+              : 'bg-black text-white hover:bg-gray-800'
+          }`}
         >
-          {scannerActive ? "Stop Camera" : "Start Scanner"}
+          {scannerActive ? "Stop Camera" : cameraDevices.length === 0 ? "No Camera Detected" : "Start Scanner"}
         </button>
+
+        {cameraDevices.length > 1 && !scannerActive && (
+          <div className="mt-3">
+            <select
+              value={selectedCamera || ''}
+              onChange={(e) => setSelectedCamera(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg text-sm"
+            >
+              {cameraDevices.map((device) => (
+                <option key={device.id} value={device.id}>
+                  {device.label || `Camera ${device.id}`}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <p className="text-center text-gray-400 text-xs mt-4 mb-2">OR</p>
 
@@ -300,7 +432,7 @@ export default function QRCheckInPage() {
           />
           <button
             onClick={() => handleSearch()}
-            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm"
+            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition"
           >
             Verify
           </button>
