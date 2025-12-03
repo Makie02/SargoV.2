@@ -86,13 +86,7 @@ export default function ReservationCalendar() {
     setSelectedEvent(event.resource);
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50">
-        <div className="text-xl font-semibold text-blue-600">Loading reservations...</div>
-      </div>
-    );
-  }
+ 
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6">
