@@ -229,30 +229,7 @@ const handleRejectReschedule = async (reservationId) => {
   }
 };
 
-  if (loading) {
-    return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '100vh',
-        backgroundColor: '#f5f5f5'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: '50px',
-            height: '50px',
-            border: '5px solid #e0e0e0',
-            borderTop: '5px solid #28a745',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto'
-          }}></div>
-          <p style={{ marginTop: '15px', color: '#666' }}>Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <div style={{
