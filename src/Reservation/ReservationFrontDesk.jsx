@@ -422,13 +422,7 @@ const handleApprove = async (id, payment_method, referenceNo) => {
           count={getStatusCount('approved')}
           color="bg-blue-100 text-blue-700 border-blue-200"
         />
-        <TabButton
-          active={activeTab === 'confirmed'}
-          onClick={() => setActiveTab('confirmed')}
-          label="Confirmed"
-          count={getStatusCount('confirmed')}
-          color="bg-green-100 text-green-700 border-green-200"
-        />
+ 
         <TabButton
           active={activeTab === 'completed'}
           onClick={() => setActiveTab('completed')}
