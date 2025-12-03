@@ -105,6 +105,7 @@ function App() {
   }, [currentPage]);
 
   // Load session & profile
+// Load session & profile
   useEffect(() => {
     const loadSession = async () => {
       const sessionData = localStorage.getItem("userSession");
@@ -115,7 +116,10 @@ function App() {
         setUserRole(session.role);
         setIsLoggedIn(true);
 
-        // ✅ Set default page based on role
+        // ✅ FIXED: Prioritize saved page over default pages
+        const savedPage = localStorage.getItem("currentPage");
+        
+        // Default pages for first login only
         const defaultPages = {
           customer: 'CustomerDashboard',
           frontdesk: 'frontDeskDashboard',
@@ -124,8 +128,12 @@ function App() {
           superadmin: 'dashboard'
         };
 
-        const savedPage = localStorage.getItem("currentPage");
-        setCurrentPage(defaultPages[session.role] || savedPage || 'dashboard');
+        // Use saved page if exists, otherwise use default for role
+        if (savedPage) {
+          setCurrentPage(savedPage);
+        } else {
+          setCurrentPage(defaultPages[session.role] || 'dashboard');
+        }
 
         const { data, error } = await supabase
           .from("accounts")
