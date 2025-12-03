@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from "../lib/supabaseClient";
 import Swal from 'sweetalert2';
 import QRCode from 'qrcode';
+import gcash from "../logo/gcash.png";
 
 const Payment = ({ reservationData, onBack, onSuccess }) => {
   const [loading, setLoading] = useState(false);
@@ -19,28 +20,28 @@ const Payment = ({ reservationData, onBack, onSuccess }) => {
   const [availableQRCodes, setAvailableQRCodes] = useState([]);
   const [loadingQRCodes, setLoadingQRCodes] = useState(false);
   useEffect(() => {
-  if (formData.payment_method === 'GCash') {
-    fetchAvailableQRCodes();
-  }
-}, [formData.payment_method]);
+    if (formData.payment_method === 'GCash') {
+      fetchAvailableQRCodes();
+    }
+  }, [formData.payment_method]);
 
-const fetchAvailableQRCodes = async () => {
-  try {
-    setLoadingQRCodes(true);
-    const { data, error } = await supabase
-      .from('qr_code')
-      .select('*')
-      .eq('status', true)
-      .order('generated_at', { ascending: false });
+  const fetchAvailableQRCodes = async () => {
+    try {
+      setLoadingQRCodes(true);
+      const { data, error } = await supabase
+        .from('qr_code')
+        .select('*')
+        .eq('status', true)
+        .order('generated_at', { ascending: false });
 
-    if (error) throw error;
-    setAvailableQRCodes(data || []);
-  } catch (error) {
-    console.error('Error fetching QR codes:', error);
-  } finally {
-    setLoadingQRCodes(false);
-  }
-};
+      if (error) throw error;
+      setAvailableQRCodes(data || []);
+    } catch (error) {
+      console.error('Error fetching QR codes:', error);
+    } finally {
+      setLoadingQRCodes(false);
+    }
+  };
   useEffect(() => {
     if (!reservationData) {
       Swal.fire({
@@ -58,7 +59,7 @@ const fetchAvailableQRCodes = async () => {
     if (!reservationData || !reservationData.reservations) return;
 
     const { reservations } = reservationData;
-    
+
     const total = reservations.reduce((sum, reservation) => {
       return sum + (parseFloat(reservation.table.info.price) * reservation.duration.hours);
     }, 0);
@@ -75,7 +76,7 @@ const fetchAvailableQRCodes = async () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    
+
     if (name === 'paymentType') {
       if (value === 'full') {
         setFormData(prev => ({
@@ -161,7 +162,7 @@ const fetchAvailableQRCodes = async () => {
     }
 
     const amountPaid = parseFloat(formData.amountPaid);
-    
+
     if (!amountPaid || amountPaid <= 0) {
       Swal.fire({
         icon: 'warning',
@@ -218,7 +219,7 @@ const fetchAvailableQRCodes = async () => {
 
       // ============= GENERATE RESERVATION NO =============
       console.log('🔄 [STEP 1] Calling RPC to generate Reservation No...');
-      
+
       const { data: reservationNo, error: rpcError } = await supabase
         .rpc('generate_reservation_no');
 
@@ -235,7 +236,7 @@ const fetchAvailableQRCodes = async () => {
       }
 
       // ============= PREPARE RECORDS =============
-      const totalTableBill = reservations.reduce((sum, r) => 
+      const totalTableBill = reservations.reduce((sum, r) =>
         sum + (parseFloat(r.table.info.price) * r.duration.hours), 0
       );
 
@@ -249,46 +250,46 @@ const fetchAvailableQRCodes = async () => {
       // Determine payment status
       const paymentStatus = formData.paymentType === 'full' ? 'completed' : 'pending';
 
-   const reservationInserts = reservations.map((reservation, idx) => {
-  const tableBill = parseFloat(reservation.table.info.price) * reservation.duration.hours;
-  const tableRatio = tableBill / totalTableBill;
-  
-  const record = {
-    reservation_no: reservationNo,
-    account_id: parseInt(accountId),
-    table_id: reservation.table.table_id,
-    reservation_date: reservation.date,
-    billiard_type: reservation.table.info.billiard_type,
-    start_time: reservation.time,
-    time_end: reservation.timeEnd,
-    duration: parseFloat(reservation.duration.hours), // ✅ STORE HOURS (1.5, 2.5, etc.) NOT ID
-    status: 'pending',
-    payment_status: paymentStatus,
-    payment_method: formData.payment_method,
-    payment_type: paymentTypeLabel,
-    total_bill: Math.round(tableBill),
-    full_amount: formData.paymentType === 'full' ? Math.round(tableBill) : null,
-    half_amount: formData.paymentType === 'half' ? Math.round(tableBill / 2) : null,
-    partial_amount: formData.paymentType === 'partial' ? Math.round(amountPaid * tableRatio) : null,
-    proof_of_payment: formData.payment_method === 'GCash' ? formData.proofOfPayment : null,
-    reference_no: formData.payment_method === 'GCash' && formData.referenceNumber ? parseInt(formData.referenceNumber) : null,
-    notification: false
-  };
+      const reservationInserts = reservations.map((reservation, idx) => {
+        const tableBill = parseFloat(reservation.table.info.price) * reservation.duration.hours;
+        const tableRatio = tableBill / totalTableBill;
 
-  console.log(`📝 [RECORD ${idx + 1}]`, {
-    reservation_no: record.reservation_no,
-    status: record.status,
-    payment_status: record.payment_status,
-    reference_no: record.reference_no,
-    duration_hours: record.duration, // ✅ LOG TO VERIFY (e.g., 1.5, 2.5)
-    duration_id: reservation.duration.id
-  });
-  
-  return record;
-});
+        const record = {
+          reservation_no: reservationNo,
+          account_id: parseInt(accountId),
+          table_id: reservation.table.table_id,
+          reservation_date: reservation.date,
+          billiard_type: reservation.table.info.billiard_type,
+          start_time: reservation.time,
+          time_end: reservation.timeEnd,
+          duration: parseFloat(reservation.duration.hours), // ✅ STORE HOURS (1.5, 2.5, etc.) NOT ID
+          status: 'pending',
+          payment_status: paymentStatus,
+          payment_method: formData.payment_method,
+          payment_type: paymentTypeLabel,
+          total_bill: Math.round(tableBill),
+          full_amount: formData.paymentType === 'full' ? Math.round(tableBill) : null,
+          half_amount: formData.paymentType === 'half' ? Math.round(tableBill / 2) : null,
+          partial_amount: formData.paymentType === 'partial' ? Math.round(amountPaid * tableRatio) : null,
+          proof_of_payment: formData.payment_method === 'GCash' ? formData.proofOfPayment : null,
+          reference_no: formData.payment_method === 'GCash' && formData.referenceNumber ? parseInt(formData.referenceNumber) : null,
+          notification: false
+        };
+
+        console.log(`📝 [RECORD ${idx + 1}]`, {
+          reservation_no: record.reservation_no,
+          status: record.status,
+          payment_status: record.payment_status,
+          reference_no: record.reference_no,
+          duration_hours: record.duration, // ✅ LOG TO VERIFY (e.g., 1.5, 2.5)
+          duration_id: reservation.duration.id
+        });
+
+        return record;
+      });
 
       console.log('📋 [STEP 2] Total records to insert:', reservationInserts.length);
-      
+
       // ============= INSERT TO DATABASE =============
       console.log('🔄 [STEP 3] Inserting to database...');
 
@@ -325,98 +326,98 @@ const fetchAvailableQRCodes = async () => {
         console.log('✅ [STEP 4 SUCCESS] Notification created');
       }
 
-   // ============= GENERATE QR CODE =============
-console.log('🔄 [STEP 5] Generating QR Code...');
+      // ============= GENERATE QR CODE =============
+      console.log('🔄 [STEP 5] Generating QR Code...');
 
-const qrData = JSON.stringify({
-  reservationNo: reservationNo,
-  accountId: parseInt(accountId)
-});
+      const qrData = JSON.stringify({
+        reservationNo: reservationNo,
+        accountId: parseInt(accountId)
+      });
 
-const qrCodeDataUrl = await QRCode.toDataURL(qrData, {
-  width: 300,
-  margin: 2,
-  color: {
-    dark: '#000000',
-    light: '#FFFFFF'
-  }
-});
+      const qrCodeDataUrl = await QRCode.toDataURL(qrData, {
+        width: 300,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
 
-console.log('✅ [STEP 5 SUCCESS] QR Code generated');
+      console.log('✅ [STEP 5 SUCCESS] QR Code generated');
 
-// Save QR code to database
-console.log('🔄 [STEP 6] Saving QR Code to database...');
+      // Save QR code to database
+      console.log('🔄 [STEP 6] Saving QR Code to database...');
 
-const { data: updateData, error: updateError } = await supabase
-  .from('reservation')
-  .update({ qr_code: qrCodeDataUrl })
-  .eq('reservation_no', reservationNo)
-  .select();
+      const { data: updateData, error: updateError } = await supabase
+        .from('reservation')
+        .update({ qr_code: qrCodeDataUrl })
+        .eq('reservation_no', reservationNo)
+        .select();
 
-if (updateError) {
-  console.error('❌ [STEP 6 ERROR] QR update failed:', updateError);
-} else {
-  console.log('✅ [STEP 6 SUCCESS] QR Code saved to database');
-  console.log('📊 Updated records:', updateData?.length || 0);
-}
+      if (updateError) {
+        console.error('❌ [STEP 6 ERROR] QR update failed:', updateError);
+      } else {
+        console.log('✅ [STEP 6 SUCCESS] QR Code saved to database');
+        console.log('📊 Updated records:', updateData?.length || 0);
+      }
 
-// Convert data URL to Blob
-const base64Response = await fetch(qrCodeDataUrl);
-const blob = await base64Response.blob();
+      // Convert data URL to Blob
+      const base64Response = await fetch(qrCodeDataUrl);
+      const blob = await base64Response.blob();
 
-// Create unique filename
-const qrFileName = `${reservationNo}_${Date.now()}.png`;
-console.log('📁 QR Filename:', qrFileName);
+      // Create unique filename
+      const qrFileName = `${reservationNo}_${Date.now()}.png`;
+      console.log('📁 QR Filename:', qrFileName);
 
-// Upload to Supabase Storage
-const { data: uploadData, error: uploadError } = await supabase
-  .storage
-  .from('qr-codes')
-  .upload(qrFileName, blob, {
-    contentType: 'image/png',
-    cacheControl: '3600',
-    upsert: false
-  });
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase
+        .storage
+        .from('qr-codes')
+        .upload(qrFileName, blob, {
+          contentType: 'image/png',
+          cacheControl: '3600',
+          upsert: false
+        });
 
-if (uploadError) {
-  console.error('❌ [STEP 6 ERROR] QR upload failed:', uploadError);
-} else {
-  console.log('✅ [STEP 6 SUCCESS] QR Code uploaded:', uploadData);
-  
-  // Get public URL
-  const { data: publicUrlData } = supabase
-    .storage
-    .from('qr-codes')
-    .getPublicUrl(qrFileName);
-  
-  const qrCodeUrl = publicUrlData.publicUrl;
-  console.log('📎 QR Code URL:', qrCodeUrl);
-  
-  // ✅ FIX: Update ALL reservations with this reservation_no
-  console.log('🔄 Updating QR code in database...');
-  
-  const { data: updateData, error: updateError } = await supabase
-    .from('reservation')
-    .update({ qr_code: qrCodeUrl })
-    .eq('reservation_no', reservationNo)
-    .select(); // ✅ ADD .select() to see what was updated
-  
-  if (updateError) {
-    console.error('❌ QR URL update failed:', updateError);
-  } else {
-    console.log('✅ QR Code URL saved to database');
-    console.log('📊 Updated records:', updateData);
-    console.log('📊 Number of records updated:', updateData?.length || 0);
-  }
-}
+      if (uploadError) {
+        console.error('❌ [STEP 6 ERROR] QR upload failed:', uploadError);
+      } else {
+        console.log('✅ [STEP 6 SUCCESS] QR Code uploaded:', uploadData);
+
+        // Get public URL
+        const { data: publicUrlData } = supabase
+          .storage
+          .from('qr-codes')
+          .getPublicUrl(qrFileName);
+
+        const qrCodeUrl = publicUrlData.publicUrl;
+        console.log('📎 QR Code URL:', qrCodeUrl);
+
+        // ✅ FIX: Update ALL reservations with this reservation_no
+        console.log('🔄 Updating QR code in database...');
+
+        const { data: updateData, error: updateError } = await supabase
+          .from('reservation')
+          .update({ qr_code: qrCodeUrl })
+          .eq('reservation_no', reservationNo)
+          .select(); // ✅ ADD .select() to see what was updated
+
+        if (updateError) {
+          console.error('❌ QR URL update failed:', updateError);
+        } else {
+          console.log('✅ QR Code URL saved to database');
+          console.log('📊 Updated records:', updateData);
+          console.log('📊 Number of records updated:', updateData?.length || 0);
+        }
+      }
 
       // ============= SUCCESS MESSAGE =============
-      const paymentTypeDisplay = 
+      const paymentTypeDisplay =
         formData.paymentType === 'full' ? 'Full Payment' :
-        formData.paymentType === 'half' ? 'Half Payment (50% Down Payment)' :
-        'Partial Payment (Custom Down Payment)';
+          formData.paymentType === 'half' ? 'Half Payment (50% Down Payment)' :
+            'Partial Payment (Custom Down Payment)';
 
-     const reservationDetailsHtml = reservations.map((res, idx) => `
+      const reservationDetailsHtml = reservations.map((res, idx) => `
   <div style="margin-bottom: ${idx < reservations.length - 1 ? '15px' : '0'}; padding: 12px; background-color: #ffffff; border-radius: 8px; border: 2px solid #e0e0e0;">
     <div style="margin-bottom: 8px;">
       <span style="padding: 4px 10px; background-color: #28a745; color: white; border-radius: 12px; font-size: 12px; font-weight: 600;">
@@ -444,10 +445,10 @@ if (uploadError) {
   </div>
 `).join('');
 
-await Swal.fire({
-  icon: 'success',
-  title: 'Reservation Successful!',
-  html: `
+      await Swal.fire({
+        icon: 'success',
+        title: 'Reservation Successful!',
+        html: `
     <div style="text-align: center; padding: 20px;">
       <div style="margin-bottom: 30px; padding: 25px; background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%); border-radius: 12px; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);">
         <p style="margin: 0 0 10px 0; color: rgba(255,255,255,0.9); font-size: 14px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px;">
@@ -531,11 +532,11 @@ await Swal.fire({
       </div>
     </div>
   `,
-  confirmButtonColor: '#28a745',
-  confirmButtonText: 'Done',
-  allowOutsideClick: false,
-  width: '600px'
-});
+        confirmButtonColor: '#28a745',
+        confirmButtonText: 'Done',
+        allowOutsideClick: false,
+        width: '600px'
+      });
 
       console.log('═══════════════════════════════════════');
       console.log('✅ RESERVATION COMPLETE');
@@ -545,7 +546,7 @@ await Swal.fire({
 
     } catch (error) {
       console.error('❌ FATAL ERROR:', error);
-      
+
       Swal.fire({
         icon: 'error',
         title: 'Error',
@@ -832,223 +833,240 @@ await Swal.fire({
             />
           </div>
 
-   {formData.payment_method === 'GCash' && (
-  <>
-    {/* Available GCash Payment Options */}
-    <div style={{ marginBottom: '20px' }}>
-      <label style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        marginBottom: '15px',
-        fontSize: '15px',
-        fontWeight: '700',
-        color: '#333'
-      }}>
-        <span style={{ fontSize: '22px' }}>💳</span>
-        Available GCash Payment Options
-      </label>
-      
-      {loadingQRCodes ? (
-        <div style={{
-          textAlign: 'center',
-          padding: '40px',
-          backgroundColor: '#f8f9fa',
-          borderRadius: '12px',
-          border: '1px solid #e0e0e0'
-        }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            border: '4px solid #f3f3f3',
-            borderTop: '4px solid #28a745',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 15px'
-          }}></div>
-          <p style={{ margin: 0, color: '#666', fontSize: '14px' }}>Loading payment options...</p>
-        </div>
-      ) : availableQRCodes.length === 0 ? (
-        <div style={{
-          padding: '30px',
-          textAlign: 'center',
-          backgroundColor: '#fff3cd',
-          border: '2px dashed #ffc107',
-          borderRadius: '12px'
-        }}>
-          <p style={{ margin: '0 0 5px 0', fontSize: '16px', fontWeight: '600', color: '#856404' }}>
-            ⚠️ No Payment Options Available
-          </p>
-          <p style={{ margin: 0, fontSize: '13px', color: '#856404' }}>
-            Please contact support or choose Cash payment method
-          </p>
-        </div>
-      ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: availableQRCodes.length === 1 ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '20px',
-          marginBottom: '20px'
-        }}>
-          {availableQRCodes.map((qrCode) => (
-            <div key={qrCode.qr_id} style={{
-              border: '3px solid #28a745',
-              borderRadius: '16px',
-              padding: '20px',
-              textAlign: 'center',
-              backgroundColor: 'white',
-              boxShadow: '0 4px 12px rgba(40, 167, 69, 0.15)',
-              transition: 'all 0.3s'
-            }}>
-              <div style={{
-                backgroundColor: '#f8f9fa',
-                padding: '20px',
-                borderRadius: '12px',
-                marginBottom: '15px',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                minHeight: '200px'
-              }}>
-                <img 
-                  src={qrCode.qr_image} 
-                  alt={qrCode.full_name}
+          {formData.payment_method === 'GCash' && (
+            <>
+              {/* Available GCash Payment Options */}
+              <div style={{ marginBottom: '20px' }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    marginBottom: "15px",
+                    fontSize: "16px",
+                    fontWeight: "700",
+                    color: "#333",
+                  }}
+                >
+                  <img
+                    src={gcash}
+                    alt="GCash Logo"
+                    style={{
+                      width: "80px",
+                      height: "80px",
+                      objectFit: "contain",
+                      display: "block",
+                    }}
+                  />
+
+                  <span style={{ letterSpacing: "0.5px" }}>
+                    Available GCash Payment Options
+                  </span>
+                </label>
+
+
+
+
+                {loadingQRCodes ? (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '40px',
+                    backgroundColor: '#f8f9fa',
+                    borderRadius: '12px',
+                    border: '1px solid #e0e0e0'
+                  }}>
+                    <div style={{
+                      width: '40px',
+                      height: '40px',
+                      border: '4px solid #f3f3f3',
+                      borderTop: '4px solid #28a745',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite',
+                      margin: '0 auto 15px'
+                    }}></div>
+                    <p style={{ margin: 0, color: '#666', fontSize: '14px' }}>Loading payment options...</p>
+                  </div>
+                ) : availableQRCodes.length === 0 ? (
+                  <div style={{
+                    padding: '30px',
+                    textAlign: 'center',
+                    backgroundColor: '#fff3cd',
+                    border: '2px dashed #ffc107',
+                    borderRadius: '12px'
+                  }}>
+                    <p style={{ margin: '0 0 5px 0', fontSize: '16px', fontWeight: '600', color: '#856404' }}>
+                      ⚠️ No Payment Options Available
+                    </p>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#856404' }}>
+                      Please contact support or choose Cash payment method
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: availableQRCodes.length === 1 ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))',
+                    gap: '20px',
+                    marginBottom: '20px'
+                  }}>
+                    {availableQRCodes.map((qrCode) => (
+                      <div key={qrCode.qr_id} style={{
+                        border: '3px solid #28a745',
+                        borderRadius: '16px',
+                        padding: '20px',
+                        textAlign: 'center',
+                        backgroundColor: 'white',
+                        boxShadow: '0 4px 12px rgba(40, 167, 69, 0.15)',
+                        transition: 'all 0.3s'
+                      }}>
+                        <div style={{
+                          backgroundColor: '#f8f9fa',
+                          padding: '20px',
+                          borderRadius: '12px',
+                          marginBottom: '15px',
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          minHeight: '200px'
+                        }}>
+                          <img
+                            src={qrCode.qr_image}
+                            alt={qrCode.full_name}
+                            style={{
+                              width: '100%',
+                              maxWidth: '200px',
+                              height: 'auto',
+                              display: 'block'
+                            }}
+                          />
+                        </div>
+                        <p style={{
+                          margin: '0 0 10px 0',
+                          fontSize: '16px',
+                          fontWeight: '700',
+                          color: '#1a1a1a',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}>
+                          {qrCode.full_name}
+                        </p>
+                        <p style={{
+                          margin: 0,
+                          fontSize: '15px',
+                          fontWeight: '700',
+                          color: '#28a745',
+                          fontFamily: "'Courier New', monospace",
+                          backgroundColor: '#e7f9ed',
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          display: 'inline-block'
+                        }}>
+                          {qrCode.cellphone_number}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{
+                  marginTop: '20px',
+                  padding: '16px 18px',
+                  backgroundColor: '#e7f3ff',
+                  border: '2px solid #b3d9ff',
+                  borderRadius: '12px',
+                  display: 'flex',
+                  gap: '12px',
+                  alignItems: 'flex-start'
+                }}>
+                  <span style={{ fontSize: '20px', flexShrink: 0, marginTop: '2px' }}>ℹ️</span>
+                  <div style={{ fontSize: '14px', color: '#004085', lineHeight: '1.6' }}>
+                    <strong style={{ display: 'block', marginBottom: '5px' }}>Instructions:</strong>
+                    Scan any QR code above to send your payment, then enter the <strong>reference number</strong> and upload the <strong>screenshot</strong> below.
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  color: '#555'
+                }}>
+                  GCash Reference Number *
+                </label>
+                <input
+                  type="number"
+                  name="referenceNumber"
+                  value={formData.referenceNumber}
+                  onChange={handleInputChange}
+                  placeholder="Enter your GCash reference number"
                   style={{
                     width: '100%',
-                    maxWidth: '200px',
-                    height: 'auto',
-                    display: 'block'
+                    padding: '12px',
+                    border: '1px solid #ddd',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                    fontFamily: "'Courier New', monospace"
                   }}
                 />
               </div>
-              <p style={{
-                margin: '0 0 10px 0',
-                fontSize: '16px',
-                fontWeight: '700',
-                color: '#1a1a1a',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px'
-              }}>
-                {qrCode.full_name}
-              </p>
-              <p style={{
-                margin: 0,
-                fontSize: '15px',
-                fontWeight: '700',
-                color: '#28a745',
-                fontFamily: "'Courier New', monospace",
-                backgroundColor: '#e7f9ed',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                display: 'inline-block'
-              }}>
-                {qrCode.cellphone_number}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
 
-      <div style={{
-        marginTop: '20px',
-        padding: '16px 18px',
-        backgroundColor: '#e7f3ff',
-        border: '2px solid #b3d9ff',
-        borderRadius: '12px',
-        display: 'flex',
-        gap: '12px',
-        alignItems: 'flex-start'
-      }}>
-        <span style={{ fontSize: '20px', flexShrink: 0, marginTop: '2px' }}>ℹ️</span>
-        <div style={{ fontSize: '14px', color: '#004085', lineHeight: '1.6' }}>
-          <strong style={{ display: 'block', marginBottom: '5px' }}>Instructions:</strong>
-          Scan any QR code above to send your payment, then enter the <strong>reference number</strong> and upload the <strong>screenshot</strong> below.
-        </div>
-      </div>
-    </div>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  color: '#555'
+                }}>
+                  Proof of Payment (Screenshot) *
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: '1px solid #ddd',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    boxSizing: 'border-box'
+                  }}
+                />
 
-    <div style={{ marginBottom: '20px' }}>
-      <label style={{
-        display: 'block',
-        marginBottom: '8px',
-        fontSize: '14px',
-        fontWeight: '600',
-        color: '#555'
-      }}>
-        GCash Reference Number *
-      </label>
-      <input
-        type="number"
-        name="referenceNumber"
-        value={formData.referenceNumber}
-        onChange={handleInputChange}
-        placeholder="Enter your GCash reference number"
-        style={{
-          width: '100%',
-          padding: '12px',
-          border: '1px solid #ddd',
-          borderRadius: '8px',
-          fontSize: '14px',
-          boxSizing: 'border-box',
-          fontFamily: "'Courier New', monospace"
-        }}
-      />
-    </div>
-
-    <div style={{ marginBottom: '20px' }}>
-      <label style={{
-        display: 'block',
-        marginBottom: '8px',
-        fontSize: '14px',
-        fontWeight: '600',
-        color: '#555'
-      }}>
-        Proof of Payment (Screenshot) *
-      </label>
-      <input
-        type="file"
-        accept="image/*"
-        onChange={handleImageUpload}
-        style={{
-          width: '100%',
-          padding: '12px',
-          border: '1px solid #ddd',
-          borderRadius: '8px',
-          fontSize: '14px',
-          boxSizing: 'border-box'
-        }}
-      />
-      
-      {imagePreview && (
-        <div style={{
-          marginTop: '15px',
-          border: '2px solid #e0e0e0',
-          borderRadius: '8px',
-          padding: '10px',
-          textAlign: 'center'
-        }}>
-          <p style={{
-            margin: '0 0 10px 0',
-            fontSize: '13px',
-            fontWeight: '600',
-            color: '#666'
-          }}>
-            Preview:
-          </p>
-          <img 
-            src={imagePreview} 
-            alt="Payment proof preview"
-            style={{
-              maxWidth: '100%',
-              maxHeight: '300px',
-              borderRadius: '8px'
-            }}
-          />
-        </div>
-      )}
-    </div>
-  </>
-)}
+                {imagePreview && (
+                  <div style={{
+                    marginTop: '15px',
+                    border: '2px solid #e0e0e0',
+                    borderRadius: '8px',
+                    padding: '10px',
+                    textAlign: 'center'
+                  }}>
+                    <p style={{
+                      margin: '0 0 10px 0',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      color: '#666'
+                    }}>
+                      Preview:
+                    </p>
+                    <img
+                      src={imagePreview}
+                      alt="Payment proof preview"
+                      style={{
+                        maxWidth: '100%',
+                        maxHeight: '300px',
+                        borderRadius: '8px'
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           <div style={{
             marginTop: '25px',
