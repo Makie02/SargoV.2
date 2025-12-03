@@ -3,6 +3,7 @@ import { Search, Calendar, Filter, Eye, RefreshCw, X, Receipt, CheckCircle } fro
 import { supabase } from '../lib/supabaseClient';
 import Swal from 'sweetalert2';
 import { FileText } from 'lucide-react';
+import gcash from "../logo/gcashlogo.png";
 
 export default function ReservationFrontDesk() {
   const [activeTab, setActiveTab] = useState('pending');
@@ -159,29 +160,29 @@ export default function ReservationFrontDesk() {
     return reservations.filter(r => r.status === status).length;
   };
 
-const handleApprove = async (id, payment_method, referenceNo) => {
-  // Generate numeric reference for Cash only
-  const generateNumericRefNo = () => {
-    return Math.floor(100000000 + Math.random() * 900000000).toString();
-  };
+  const handleApprove = async (id, payment_method, referenceNo) => {
+    // Generate numeric reference for Cash only
+    const generateNumericRefNo = () => {
+      return Math.floor(100000000 + Math.random() * 900000000).toString();
+    };
 
-  let finalRefNo = referenceNo;
+    let finalRefNo = referenceNo;
 
-  // If GCash, must have reference number from receipt
-  if (payment_method?.toLowerCase() === 'gcash') {
-    if (!referenceNo) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Missing Reference Number',
-        text: 'Please upload a GCash receipt with a valid reference number first.',
-      });
-      return;
-    }
+    // If GCash, must have reference number from receipt
+    if (payment_method?.toLowerCase() === 'gcash') {
+      if (!referenceNo) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Missing Reference Number',
+          text: 'Please upload a GCash receipt with a valid reference number first.',
+        });
+        return;
+      }
 
-    // Auto-verify GCash reference - show it in modal
-    const { isConfirmed } = await Swal.fire({
-      title: 'Verify GCash Payment',
-      html: `
+      // Auto-verify GCash reference - show it in modal
+      const { isConfirmed } = await Swal.fire({
+        title: 'Verify GCash Payment',
+        html: `
         <div style="text-align: left; padding: 20px; background-color: #f0f9ff; border-radius: 8px; margin: 10px 0;">
           <p style="margin: 10px 0;"><strong>Reference Number:</strong></p>
           <div style="background-color: white; padding: 12px; border-radius: 6px; border: 2px solid #3b82f6; font-weight: bold; font-size: 16px; letter-spacing: 1px;">
@@ -190,30 +191,30 @@ const handleApprove = async (id, payment_method, referenceNo) => {
         </div>
         <p style="margin-top: 15px; color: #666;">Please verify this matches the GCash receipt before approving.</p>
       `,
-      icon: 'info',
-      showCancelButton: true,
-      confirmButtonColor: '#10b981',
-      cancelButtonColor: '#6b7280',
-      confirmButtonText: 'Looks Good, Approve',
-      cancelButtonText: 'Cancel'
-    });
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Looks Good, Approve',
+        cancelButtonText: 'Cancel'
+      });
 
-    if (!isConfirmed) return;
-    finalRefNo = referenceNo;
-  }
-  // If Cash, generate numeric reference
-  else if (payment_method?.toLowerCase() === 'cash') {
-    if (!referenceNo) {
-      finalRefNo = generateNumericRefNo();
-    } else {
+      if (!isConfirmed) return;
       finalRefNo = referenceNo;
     }
-  }
+    // If Cash, generate numeric reference
+    else if (payment_method?.toLowerCase() === 'cash') {
+      if (!referenceNo) {
+        finalRefNo = generateNumericRefNo();
+      } else {
+        finalRefNo = referenceNo;
+      }
+    }
 
-  // Final approval confirmation
-  const result = await Swal.fire({
-    title: 'Approve Reservation?',
-    html: `
+    // Final approval confirmation
+    const result = await Swal.fire({
+      title: 'Approve Reservation?',
+      html: `
       <div style="text-align: left;">
         <p>Are you sure you want to approve this reservation?</p>
         <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin-top: 15px;">
@@ -225,52 +226,52 @@ const handleApprove = async (id, payment_method, referenceNo) => {
         </div>
       </div>
     `,
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonColor: '#10b981',
-    cancelButtonColor: '#6b7280',
-    confirmButtonText: 'Yes, Approve',
-    cancelButtonText: 'Cancel'
-  });
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#10b981',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, Approve',
+      cancelButtonText: 'Cancel'
+    });
 
-  if (!result.isConfirmed) return;
+    if (!result.isConfirmed) return;
 
-  try {
-    const updateData = {
-      status: 'approved',
-      reference_no: finalRefNo
-    };
+    try {
+      const updateData = {
+        status: 'approved',
+        reference_no: finalRefNo
+      };
 
-    const { error } = await supabase
-      .from('reservation')
-      .update(updateData)
-      .eq('id', id);
+      const { error } = await supabase
+        .from('reservation')
+        .update(updateData)
+        .eq('id', id);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    Swal.fire({
-      icon: 'success',
-      title: 'Approved!',
-      html: `
+      Swal.fire({
+        icon: 'success',
+        title: 'Approved!',
+        html: `
         <p>Reservation approved successfully</p>
         <div style="background-color: #ecfdf5; padding: 15px; border-radius: 8px; margin-top: 15px; border: 2px solid #10b981;">
           <p style="margin: 0; font-weight: bold;">Reference No:</p>
           <p style="margin: 8px 0; font-size: 18px; font-weight: bold; color: #10b981;">${finalRefNo}</p>
         </div>
       `,
-      timer: 2500,
-      showConfirmButton: false
-    });
-    fetchReservations();
-  } catch (error) {
-    console.error('Error approving reservation:', error);
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'Failed to approve reservation',
-    });
-  }
-};
+        timer: 2500,
+        showConfirmButton: false
+      });
+      fetchReservations();
+    } catch (error) {
+      console.error('Error approving reservation:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'Failed to approve reservation',
+      });
+    }
+  };
   const handleReject = async (id) => {
     const result = await Swal.fire({
       title: 'Reject Reservation?',
@@ -422,7 +423,7 @@ const handleApprove = async (id, payment_method, referenceNo) => {
           count={getStatusCount('approved')}
           color="bg-blue-100 text-blue-700 border-blue-200"
         />
- 
+
         <TabButton
           active={activeTab === 'completed'}
           onClick={() => setActiveTab('completed')}
@@ -475,18 +476,24 @@ const handleApprove = async (id, payment_method, referenceNo) => {
                       <td className="px-4 py-3 text-sm">
                         <div className="flex items-center gap-2">
                           {/* Payment Method Badge */}
-                          <span className={`px-4 py-2 rounded-full text-xs font-bold capitalize inline-flex items-center gap-2 ${reservation.payment_method?.toLowerCase() === 'gcash'
-                              ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md'
-                              : 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md'
-                            }`}>
-                            {reservation.payment_method?.toLowerCase() === 'gcash' && (
-                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                <circle cx="12" cy="12" r="10" opacity="0.3" />
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" />
-                              </svg>
+                          <span
+                            className={`px-4 py-2 rounded-full text-xs font-bold capitalize inline-flex items-center gap-2 ${reservation.payment_method?.toLowerCase() === "gcash"
+                                ? "bg-gradient-to-r from-white to-blue-200 text-black shadow-md"
+                                : "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md"
+                              }`}
+                          >
+                            {reservation.payment_method?.toLowerCase() === "gcash" && (
+                              <img
+                                src={gcash}
+                                alt="GCash Logo"
+                                className="w-5 h-5 object-contain"
+                              />
                             )}
-                            {reservation.payment_method || 'N/A'}
+
+                            {reservation.payment_method || "N/A"}
                           </span>
+
+
 
                           {/* Receipt Button - Only for GCash */}
                           {reservation.payment_method?.toLowerCase() === 'gcash' && (
