@@ -16,7 +16,31 @@ const Payment = ({ reservationData, onBack, onSuccess }) => {
 
   const [totalBill, setTotalBill] = useState(0);
   const [minimumPayment, setMinimumPayment] = useState(0);
+  const [availableQRCodes, setAvailableQRCodes] = useState([]);
+  const [loadingQRCodes, setLoadingQRCodes] = useState(false);
+  useEffect(() => {
+  if (formData.payment_method === 'GCash') {
+    fetchAvailableQRCodes();
+  }
+}, [formData.payment_method]);
 
+const fetchAvailableQRCodes = async () => {
+  try {
+    setLoadingQRCodes(true);
+    const { data, error } = await supabase
+      .from('qr_code')
+      .select('*')
+      .eq('status', true)
+      .order('generated_at', { ascending: false });
+
+    if (error) throw error;
+    setAvailableQRCodes(data || []);
+  } catch (error) {
+    console.error('Error fetching QR codes:', error);
+  } finally {
+    setLoadingQRCodes(false);
+  }
+};
   useEffect(() => {
     if (!reservationData) {
       Swal.fire({
@@ -225,41 +249,43 @@ const Payment = ({ reservationData, onBack, onSuccess }) => {
       // Determine payment status
       const paymentStatus = formData.paymentType === 'full' ? 'completed' : 'pending';
 
-      const reservationInserts = reservations.map((reservation, idx) => {
-        const tableBill = parseFloat(reservation.table.info.price) * reservation.duration.hours;
-        const tableRatio = tableBill / totalTableBill;
-        
-        const record = {
-          reservation_no: reservationNo,
-          account_id: parseInt(accountId),
-          table_id: reservation.table.table_id,
-          reservation_date: reservation.date,
-          billiard_type: reservation.table.info.billiard_type,
-          start_time: reservation.time,
-          time_end: reservation.timeEnd,
-          duration: reservation.duration.id,
-          status: 'pending',
-          payment_status: paymentStatus,
-          payment_method: formData.payment_method,
-          payment_type: paymentTypeLabel,
-          total_bill: Math.round(tableBill),
-          full_amount: formData.paymentType === 'full' ? Math.round(tableBill) : null,
-          half_amount: formData.paymentType === 'half' ? Math.round(tableBill / 2) : null,
-          partial_amount: formData.paymentType === 'partial' ? Math.round(amountPaid * tableRatio) : null,
-          proof_of_payment: formData.payment_method === 'GCash' ? formData.proofOfPayment : null,
-          reference_no: formData.payment_method === 'GCash' && formData.referenceNumber ? parseInt(formData.referenceNumber) : null,
-          notification: false
-        };
+   const reservationInserts = reservations.map((reservation, idx) => {
+  const tableBill = parseFloat(reservation.table.info.price) * reservation.duration.hours;
+  const tableRatio = tableBill / totalTableBill;
+  
+  const record = {
+    reservation_no: reservationNo,
+    account_id: parseInt(accountId),
+    table_id: reservation.table.table_id,
+    reservation_date: reservation.date,
+    billiard_type: reservation.table.info.billiard_type,
+    start_time: reservation.time,
+    time_end: reservation.timeEnd,
+    duration: parseFloat(reservation.duration.hours), // ✅ STORE HOURS (1.5, 2.5, etc.) NOT ID
+    status: 'pending',
+    payment_status: paymentStatus,
+    payment_method: formData.payment_method,
+    payment_type: paymentTypeLabel,
+    total_bill: Math.round(tableBill),
+    full_amount: formData.paymentType === 'full' ? Math.round(tableBill) : null,
+    half_amount: formData.paymentType === 'half' ? Math.round(tableBill / 2) : null,
+    partial_amount: formData.paymentType === 'partial' ? Math.round(amountPaid * tableRatio) : null,
+    proof_of_payment: formData.payment_method === 'GCash' ? formData.proofOfPayment : null,
+    reference_no: formData.payment_method === 'GCash' && formData.referenceNumber ? parseInt(formData.referenceNumber) : null,
+    notification: false
+  };
 
-        console.log(`📝 [RECORD ${idx + 1}]`, {
-          reservation_no: record.reservation_no,
-          status: record.status,
-          payment_status: record.payment_status,
-          reference_no: record.reference_no
-        });
-        
-        return record;
-      });
+  console.log(`📝 [RECORD ${idx + 1}]`, {
+    reservation_no: record.reservation_no,
+    status: record.status,
+    payment_status: record.payment_status,
+    reference_no: record.reference_no,
+    duration_hours: record.duration, // ✅ LOG TO VERIFY (e.g., 1.5, 2.5)
+    duration_id: reservation.duration.id
+  });
+  
+  return record;
+});
 
       console.log('📋 [STEP 2] Total records to insert:', reservationInserts.length);
       
@@ -390,85 +416,126 @@ if (uploadError) {
         formData.paymentType === 'half' ? 'Half Payment (50% Down Payment)' :
         'Partial Payment (Custom Down Payment)';
 
-      await Swal.fire({
-        icon: 'success',
-        title: 'Reservation Successful!',
-        html: `
-          <div style="text-align: center; padding: 20px;">
-            <div style="margin-bottom: 30px; padding: 25px; background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%); border-radius: 12px; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);">
-              <p style="margin: 0 0 10px 0; color: rgba(255,255,255,0.9); font-size: 14px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px;">
-                📋 Your Reservation Number
-              </p>
-              <div style="font-size: 32px; font-weight: 900; color: #fff; letter-spacing: 3px; font-family: 'Courier New', monospace; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                ${reservationNo}
-              </div>
-              <p style="margin: 10px 0 0 0; color: rgba(255,255,255,0.85); font-size: 12px;">
-                Save this number for your records
-              </p>
-            </div>
+     const reservationDetailsHtml = reservations.map((res, idx) => `
+  <div style="margin-bottom: ${idx < reservations.length - 1 ? '15px' : '0'}; padding: 12px; background-color: #ffffff; border-radius: 8px; border: 2px solid #e0e0e0;">
+    <div style="margin-bottom: 8px;">
+      <span style="padding: 4px 10px; background-color: #28a745; color: white; border-radius: 12px; font-size: 12px; font-weight: 600;">
+        ${res.table.table_name}
+      </span>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
+      <div>
+        <span style="color: #999;">📅 Date:</span>
+        <div style="font-weight: 600; color: #333;">${res.date}</div>
+      </div>
+      <div>
+        <span style="color: #999;">🕐 Time:</span>
+        <div style="font-weight: 600; color: #333;">${res.time}</div>
+      </div>
+      <div>
+        <span style="color: #999;">⏱️ Duration:</span>
+        <div style="font-weight: 600; color: #333;">${res.duration.hours} hour${res.duration.hours > 1 ? 's' : ''}</div>
+      </div>
+      <div>
+        <span style="color: #999;">🏁 End Time:</span>
+        <div style="font-weight: 600; color: #333;">${res.timeEnd}</div>
+      </div>
+    </div>
+  </div>
+`).join('');
 
-            <div style="text-align: left; background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #28a745;">
-              <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
-                <span style="color: #666;">Reservation:</span>
-                <span style="color: #28a745; font-weight: 700; font-family: 'Courier New', monospace;">${reservationNo}</span>
-              </div>
-              <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
-                <span style="color: #666;">Total Bill:</span>
-                <span style="color: #28a745; font-weight: 700;">₱${totalBill.toFixed(2)}</span>
-              </div>
-              <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
-                <span style="color: #666;">Payment Method:</span>
-                <span style="color: #333; font-weight: 600;">${formData.payment_method}</span>
-              </div>
-              ${formData.payment_method === 'GCash' ? `
-                <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
-                  <span style="color: #666;">Reference No:</span>
-                  <span style="color: #333; font-weight: 600; font-family: 'Courier New', monospace;">${formData.referenceNumber}</span>
-                </div>
-              ` : ''}
-              <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
-                <span style="color: #666;">Payment Type:</span>
-                <span style="color: #333; font-weight: 600;">${paymentTypeDisplay}</span>
-              </div>
-              <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
-                <span style="color: #666;">Amount Paid:</span>
-                <span style="color: #28a745; font-weight: 700;">₱${amountPaid.toFixed(2)}</span>
-              </div>
-              <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
-                <span style="color: #666;">Payment Status:</span>
-                <span style="color: ${paymentStatus === 'completed' ? '#28a745' : '#ff9800'}; font-weight: 700; text-transform: uppercase;">
-                  ${paymentStatus}
-                </span>
-              </div>
-              ${formData.paymentType !== 'full' ? `
-                <div style="display: flex; justify-content: space-between; background-color: #fff3cd; padding: 8px 10px; border-radius: 6px;">
-                  <span style="color: #856404; font-weight: 600;">Remaining Balance:</span>
-                  <span style="color: #856404; font-weight: 700;">₱${(totalBill - amountPaid).toFixed(2)}</span>
-                </div>
-              ` : ''}
-            </div>
+await Swal.fire({
+  icon: 'success',
+  title: 'Reservation Successful!',
+  html: `
+    <div style="text-align: center; padding: 20px;">
+      <div style="margin-bottom: 30px; padding: 25px; background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%); border-radius: 12px; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);">
+        <p style="margin: 0 0 10px 0; color: rgba(255,255,255,0.9); font-size: 14px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px;">
+          📋 Your Reservation Number
+        </p>
+        <div style="font-size: 32px; font-weight: 900; color: #fff; letter-spacing: 3px; font-family: 'Courier New', monospace; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+          ${reservationNo}
+        </div>
+        <p style="margin: 10px 0 0 0; color: rgba(255,255,255,0.85); font-size: 12px;">
+          Save this number for your records
+        </p>
+      </div>
 
-            <div style="margin-top: 30px; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-              <p style="margin: 0 0 15px 0; font-size: 16px; font-weight: 700; color: #333; text-align: center;">
-                📱 Your QR Code
-              </p>
-              <p style="margin: 0 0 15px 0; font-size: 13px; color: #666; text-align: center;">
-                Show this QR code at the front desk
-              </p>
-              <div style="text-align: center; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                <img src="${qrCodeDataUrl}" alt="Reservation QR Code" style="max-width: 250px; width: 100%; border-radius: 8px;" />
-              </div>
-              <p style="margin: 15px 0 0 0; font-size: 12px; color: #999; text-align: center; font-style: italic;">
-                Screenshot this QR code for easy check-in
-              </p>
-            </div>
+      <!-- ✅ RESERVATION DETAILS -->
+      <div style="text-align: left; background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #28a745;">
+        <h3 style="margin: 0 0 15px 0; font-size: 16px; font-weight: 700; color: #333;">
+          📌 Reservation Details
+        </h3>
+        ${reservationDetailsHtml}
+      </div>
+
+      <!-- PAYMENT SUMMARY -->
+      <div style="text-align: left; background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #28a745;">
+        <h3 style="margin: 0 0 15px 0; font-size: 16px; font-weight: 700; color: #333;">
+          💳 Payment Summary
+        </h3>
+        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
+          <span style="color: #666;">Reservation:</span>
+          <span style="color: #28a745; font-weight: 700; font-family: 'Courier New', monospace;">${reservationNo}</span>
+        </div>
+        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
+          <span style="color: #666;">Total Bill:</span>
+          <span style="color: #28a745; font-weight: 700;">₱${totalBill.toFixed(2)}</span>
+        </div>
+        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
+          <span style="color: #666;">Payment Method:</span>
+          <span style="color: #333; font-weight: 600;">${formData.payment_method}</span>
+        </div>
+        ${formData.payment_method === 'GCash' ? `
+          <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
+            <span style="color: #666;">Reference No:</span>
+            <span style="color: #333; font-weight: 600; font-family: 'Courier New', monospace;">${formData.referenceNumber}</span>
           </div>
-        `,
-        confirmButtonColor: '#28a745',
-        confirmButtonText: 'Done',
-        allowOutsideClick: false,
-        width: '500px'
-      });
+        ` : ''}
+        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
+          <span style="color: #666;">Payment Type:</span>
+          <span style="color: #333; font-weight: 600;">${paymentTypeDisplay}</span>
+        </div>
+        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
+          <span style="color: #666;">Amount Paid:</span>
+          <span style="color: #28a745; font-weight: 700;">₱${amountPaid.toFixed(2)}</span>
+        </div>
+        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">
+          <span style="color: #666;">Payment Status:</span>
+          <span style="color: ${paymentStatus === 'completed' ? '#28a745' : '#ff9800'}; font-weight: 700; text-transform: uppercase;">
+            ${paymentStatus}
+          </span>
+        </div>
+        ${formData.paymentType !== 'full' ? `
+          <div style="display: flex; justify-content: space-between; background-color: #fff3cd; padding: 8px 10px; border-radius: 6px;">
+            <span style="color: #856404; font-weight: 600;">Remaining Balance:</span>
+            <span style="color: #856404; font-weight: 700;">₱${(totalBill - amountPaid).toFixed(2)}</span>
+          </div>
+        ` : ''}
+      </div>
+
+      <!-- QR CODE -->
+      <div style="margin-top: 30px; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <p style="margin: 0 0 15px 0; font-size: 16px; font-weight: 700; color: #333; text-align: center;">
+          📱 Your QR Code
+        </p>
+        <p style="margin: 0 0 15px 0; font-size: 13px; color: #666; text-align: center;">
+          Show this QR code at the front desk
+        </p>
+         <div style="display: flex; justify-content: center; align-items: center; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+          <img src="${qrCodeDataUrl}" alt="Reservation QR Code" style="max-width: 250px; width: 100%; height: auto; border-radius: 8px;" />
+        </div>
+        <p style="margin: 15px 0 0 0; font-size: 12px; color: #999; text-align: center; font-style: italic;">
+          Screenshot this QR code for easy check-in
+        </p>
+      </div>
+    </div>
+  `,
+  confirmButtonColor: '#28a745',
+  confirmButtonText: 'Done',
+  allowOutsideClick: false,
+  width: '600px'
+});
 
       console.log('═══════════════════════════════════════');
       console.log('✅ RESERVATION COMPLETE');
@@ -765,90 +832,223 @@ if (uploadError) {
             />
           </div>
 
-          {formData.payment_method === 'GCash' && (
-            <>
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  color: '#555'
-                }}>
-                  GCash Reference Number *
-                </label>
-                <input
-                  type="number"
-                  name="referenceNumber"
-                  value={formData.referenceNumber}
-                  onChange={handleInputChange}
-                  placeholder="Enter your GCash reference number"
+   {formData.payment_method === 'GCash' && (
+  <>
+    {/* Available GCash Payment Options */}
+    <div style={{ marginBottom: '20px' }}>
+      <label style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '15px',
+        fontSize: '15px',
+        fontWeight: '700',
+        color: '#333'
+      }}>
+        <span style={{ fontSize: '22px' }}>💳</span>
+        Available GCash Payment Options
+      </label>
+      
+      {loadingQRCodes ? (
+        <div style={{
+          textAlign: 'center',
+          padding: '40px',
+          backgroundColor: '#f8f9fa',
+          borderRadius: '12px',
+          border: '1px solid #e0e0e0'
+        }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            border: '4px solid #f3f3f3',
+            borderTop: '4px solid #28a745',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 15px'
+          }}></div>
+          <p style={{ margin: 0, color: '#666', fontSize: '14px' }}>Loading payment options...</p>
+        </div>
+      ) : availableQRCodes.length === 0 ? (
+        <div style={{
+          padding: '30px',
+          textAlign: 'center',
+          backgroundColor: '#fff3cd',
+          border: '2px dashed #ffc107',
+          borderRadius: '12px'
+        }}>
+          <p style={{ margin: '0 0 5px 0', fontSize: '16px', fontWeight: '600', color: '#856404' }}>
+            ⚠️ No Payment Options Available
+          </p>
+          <p style={{ margin: 0, fontSize: '13px', color: '#856404' }}>
+            Please contact support or choose Cash payment method
+          </p>
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: availableQRCodes.length === 1 ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: '20px',
+          marginBottom: '20px'
+        }}>
+          {availableQRCodes.map((qrCode) => (
+            <div key={qrCode.qr_id} style={{
+              border: '3px solid #28a745',
+              borderRadius: '16px',
+              padding: '20px',
+              textAlign: 'center',
+              backgroundColor: 'white',
+              boxShadow: '0 4px 12px rgba(40, 167, 69, 0.15)',
+              transition: 'all 0.3s'
+            }}>
+              <div style={{
+                backgroundColor: '#f8f9fa',
+                padding: '20px',
+                borderRadius: '12px',
+                marginBottom: '15px',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                minHeight: '200px'
+              }}>
+                <img 
+                  src={qrCode.qr_image} 
+                  alt={qrCode.full_name}
                   style={{
                     width: '100%',
-                    padding: '12px',
-                    border: '1px solid #ddd',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                    fontFamily: "'Courier New', monospace"
+                    maxWidth: '200px',
+                    height: 'auto',
+                    display: 'block'
                   }}
                 />
               </div>
+              <p style={{
+                margin: '0 0 10px 0',
+                fontSize: '16px',
+                fontWeight: '700',
+                color: '#1a1a1a',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                {qrCode.full_name}
+              </p>
+              <p style={{
+                margin: 0,
+                fontSize: '15px',
+                fontWeight: '700',
+                color: '#28a745',
+                fontFamily: "'Courier New', monospace",
+                backgroundColor: '#e7f9ed',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                display: 'inline-block'
+              }}>
+                {qrCode.cellphone_number}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
 
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  color: '#555'
-                }}>
-                  Proof of Payment (Screenshot) *
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: '1px solid #ddd',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    boxSizing: 'border-box'
-                  }}
-                />
-                
-                {imagePreview && (
-                  <div style={{
-                    marginTop: '15px',
-                    border: '2px solid #e0e0e0',
-                    borderRadius: '8px',
-                    padding: '10px',
-                    textAlign: 'center'
-                  }}>
-                    <p style={{
-                      margin: '0 0 10px 0',
-                      fontSize: '13px',
-                      fontWeight: '600',
-                      color: '#666'
-                    }}>
-                      Preview:
-                    </p>
-                    <img 
-                      src={imagePreview} 
-                      alt="Payment proof preview"
-                      style={{
-                        maxWidth: '100%',
-                        maxHeight: '300px',
-                        borderRadius: '8px'
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+      <div style={{
+        marginTop: '20px',
+        padding: '16px 18px',
+        backgroundColor: '#e7f3ff',
+        border: '2px solid #b3d9ff',
+        borderRadius: '12px',
+        display: 'flex',
+        gap: '12px',
+        alignItems: 'flex-start'
+      }}>
+        <span style={{ fontSize: '20px', flexShrink: 0, marginTop: '2px' }}>ℹ️</span>
+        <div style={{ fontSize: '14px', color: '#004085', lineHeight: '1.6' }}>
+          <strong style={{ display: 'block', marginBottom: '5px' }}>Instructions:</strong>
+          Scan any QR code above to send your payment, then enter the <strong>reference number</strong> and upload the <strong>screenshot</strong> below.
+        </div>
+      </div>
+    </div>
+
+    <div style={{ marginBottom: '20px' }}>
+      <label style={{
+        display: 'block',
+        marginBottom: '8px',
+        fontSize: '14px',
+        fontWeight: '600',
+        color: '#555'
+      }}>
+        GCash Reference Number *
+      </label>
+      <input
+        type="number"
+        name="referenceNumber"
+        value={formData.referenceNumber}
+        onChange={handleInputChange}
+        placeholder="Enter your GCash reference number"
+        style={{
+          width: '100%',
+          padding: '12px',
+          border: '1px solid #ddd',
+          borderRadius: '8px',
+          fontSize: '14px',
+          boxSizing: 'border-box',
+          fontFamily: "'Courier New', monospace"
+        }}
+      />
+    </div>
+
+    <div style={{ marginBottom: '20px' }}>
+      <label style={{
+        display: 'block',
+        marginBottom: '8px',
+        fontSize: '14px',
+        fontWeight: '600',
+        color: '#555'
+      }}>
+        Proof of Payment (Screenshot) *
+      </label>
+      <input
+        type="file"
+        accept="image/*"
+        onChange={handleImageUpload}
+        style={{
+          width: '100%',
+          padding: '12px',
+          border: '1px solid #ddd',
+          borderRadius: '8px',
+          fontSize: '14px',
+          boxSizing: 'border-box'
+        }}
+      />
+      
+      {imagePreview && (
+        <div style={{
+          marginTop: '15px',
+          border: '2px solid #e0e0e0',
+          borderRadius: '8px',
+          padding: '10px',
+          textAlign: 'center'
+        }}>
+          <p style={{
+            margin: '0 0 10px 0',
+            fontSize: '13px',
+            fontWeight: '600',
+            color: '#666'
+          }}>
+            Preview:
+          </p>
+          <img 
+            src={imagePreview} 
+            alt="Payment proof preview"
+            style={{
+              maxWidth: '100%',
+              maxHeight: '300px',
+              borderRadius: '8px'
+            }}
+          />
+        </div>
+      )}
+    </div>
+  </>
+)}
 
           <div style={{
             marginTop: '25px',
@@ -908,7 +1108,7 @@ if (uploadError) {
         <div style={{
           position: 'fixed',
           bottom: 0,
-          left: 0,
+          left: '255px',
           right: 0,
           backgroundColor: '#5a5a5a',
           padding: '20px',
