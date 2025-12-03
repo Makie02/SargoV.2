@@ -184,14 +184,14 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
           </div>
         </div>
 
-        {/* 🆕 Forgot Password Link */}
-        <div className="mb-6 text-right">
+        <div className="text-right mb-4">
           <button
+            type="button"
             onClick={() => {
               handleClose();
               onSwitchToForgotPassword();
             }}
-            className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+            className="text-sm text-purple-600 hover:text-purple-700"
           >
             Forgot Password?
           </button>
