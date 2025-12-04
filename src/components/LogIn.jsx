@@ -4,18 +4,18 @@ import { supabase } from "../lib/supabaseClient";
 import Swal from "sweetalert2";
 
 function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchToForgotPassword }) {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!username || !password) {
+    if (!email || !password) {
       Swal.fire({
         icon: "warning",
         title: "Missing Information",
-        text: "Please enter both username and password.",
+        text: "Please enter both email and password.",
         confirmButtonColor: "#1e293b",
       });
       return;
@@ -24,9 +24,9 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
     setLoading(true);
 
     try {
-      // ✅ Check for hardcoded ADMIN login first
+      // Check for hardcoded ADMIN login first
       if (
-        username.trim().toUpperCase() === "ADMIN" &&
+        email.trim().toUpperCase() === "ADMIN" &&
         password.trim().toUpperCase() === "ADMIN"
       ) {
         const sessionData = {
@@ -61,11 +61,11 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
         return;
       }
 
-      // ✅ Regular login via Supabase
+      // Regular login via Supabase
       const { data: accountData, error: accountError } = await supabase
         .from("accounts")
         .select("account_id, email, role, password")
-        .eq("email", username.toLowerCase())
+        .eq("email", email.toLowerCase())
         .single();
 
       if (accountError || !accountData) {
@@ -76,7 +76,7 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
         throw new Error("Invalid email or password.");
       }
 
-      let fullName = username;
+      let fullName = email;
       if (accountData.role === "customer") {
         const { data: customerData } = await supabase
           .from("customer")
@@ -128,7 +128,7 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
   };
 
   const handleClose = () => {
-    setUsername("");
+    setEmail("");
     setPassword("");
     onClose();
   };
@@ -149,12 +149,12 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
 
         <div className="mb-4">
           <label className="block text-gray-700 text-sm font-medium mb-2">
-            Email / Username
+            Email
           </label>
           <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleLogin(e)}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             placeholder="Enter your email"
@@ -184,14 +184,14 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
           </div>
         </div>
 
-        <div className="text-right mb-4">
+        {/* Forgot Password Link */}
+        <div className="mb-6 text-right">
           <button
-            type="button"
             onClick={() => {
               handleClose();
               onSwitchToForgotPassword();
             }}
-            className="text-sm text-purple-600 hover:text-purple-700"
+            className="text-sm text-purple-600 hover:text-purple-700 font-medium"
           >
             Forgot Password?
           </button>
