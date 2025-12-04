@@ -26,11 +26,20 @@ const CustomerReservation = () => {
   const [unavailableDates, setUnavailableDates] = useState({});
   const [maxDurations, setMaxDurations] = useState({});
   const [rescheduleForm, setRescheduleForm] = useState({
+    
     date: '',
     time: '',
     duration: ''
   });
   const [availableTimes, setAvailableTimes] = useState([]);
+  
+useEffect(() => {
+  console.log('🔍 availableTimes updated:', availableTimes);
+  console.log('🔍 availableTimes length:', availableTimes.length);
+  if (availableTimes.length > 0) {
+    console.log('🔍 First time slot:', availableTimes[0]);
+  }
+}, [availableTimes]);
 
 useEffect(() => {
   getCurrentUser();
@@ -192,11 +201,12 @@ const isDateClosed = (date) => {
 const getDayNameFromDate = (dateString) => {
   if (!dateString) return null;
   
-  const date = new Date(dateString);
+  const [year, month, day] = dateString.split('-');
+  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   return days[date.getDay()];
 };
-
 const isTimeInPast = (selectedTime, date) => {
   if (!date) return false;
   
@@ -216,15 +226,20 @@ const isTimeInPast = (selectedTime, date) => {
 };
 
 const getAvailableTimes = async (tableId, date) => {
+  console.log('🔧 getAvailableTimes called with:', { tableId, date });
+  
   if (!date) {
+    console.log('❌ No date provided');
     return [];
   }
 
   if (isDateClosed(date)) {
+    console.log('❌ Date is closed');
     return [];
   }
 
   const dayName = getDayNameFromDate(date);
+  console.log('📅 Day name:', dayName);
   
   const schedules = timeDates.filter(td => 
     td.Date === dayName && 
@@ -232,33 +247,117 @@ const getAvailableTimes = async (tableId, date) => {
     !td.CloseDay
   );
 
+  console.log('📅 Found schedules:', schedules);
+
   if (schedules.length === 0) {
+    console.log('❌ No active schedules found');
     return [];
   }
 
   const activeSchedule = schedules[0];
-  const openTime = activeSchedule.OpenTime;
-  const closeTime = activeSchedule.CloseTime;
+  console.log('✅ Active schedule:', activeSchedule);
 
-  const timeSlots = [];
+  const parseTime = (timeString) => {
+    if (!timeString) return { hour: 0, minute: 0 };
+    const [hour, minute] = timeString.split(':');
+    return { 
+      hour: parseInt(hour), 
+      minute: parseInt(minute) 
+    };
+  };
+
+  const openTime = parseTime(activeSchedule.OpenTime);
+  const closeTime = parseTime(activeSchedule.CloseTime);
+
   const today = getTodayDate();
   
-  for (let hour = openTime; hour <= closeTime; hour++) {
-    const period = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-    const timeString = `${displayHour}:00 ${period}`;
+  // Get all existing reservations
+  const { data: existingReservations, error: reservationError } = await supabase
+    .from('reservation')
+    .select('start_time, time_end')
+    .eq('table_id', tableId)
+    .eq('reservation_date', date)
+    .not('status', 'in', '(cancelled,completed)')
+    .order('start_time', { ascending: true });
+
+  if (reservationError) {
+    console.error('Error checking existing reservations:', reservationError);
+  }
+
+  const reservations = existingReservations || [];
+
+  const timeToMinutes = (timeStr) => {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+
+  const timeSlots = [];
+  let currentHour = openTime.hour;
+  let currentMinute = openTime.minute;
+  
+  const hasExistingReservations = reservations.length > 0;
+  let useHourlyIntervals = !hasExistingReservations;
+
+  while (currentHour < closeTime.hour || (currentHour === closeTime.hour && currentMinute < closeTime.minute)) {
+    const period = currentHour >= 12 ? 'PM' : 'AM';
+    const displayHour = currentHour === 0 ? 12 : currentHour > 12 ? currentHour - 12 : currentHour;
+    const timeString = `${displayHour}:${String(currentMinute).padStart(2, '0')} ${period}`;
+    const dbTime = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}:00`;
     
     const isPast = date === today && isTimeInPast(timeString, date);
     
+    // Check if this time would create a gap < 1 hour
+    let createsGap = false;
+    const slotMinutes = timeToMinutes(dbTime);
+    
+    for (const reservation of reservations) {
+      const resEndMinutes = timeToMinutes(reservation.time_end);
+      const gap = slotMinutes - resEndMinutes;
+      
+      if (gap > 0 && gap < 60) {
+        createsGap = true;
+        break;
+      }
+    }
+    
     timeSlots.push({
       time: timeString,
-      isPast: isPast
+      dbTime: dbTime,
+      isPast: isPast,
+      createsGap: createsGap
     });
+    
+    if (useHourlyIntervals) {
+      currentHour += 1;
+      useHourlyIntervals = false;
+    } else {
+      currentMinute += 30;
+      if (currentMinute >= 60) {
+        currentMinute = 0;
+        currentHour += 1;
+      }
+    }
+    
+    if (currentHour > closeTime.hour || (currentHour === closeTime.hour && currentMinute >= closeTime.minute)) {
+      break;
+    }
   }
 
   const availabilityChecks = timeSlots.map(async (slot) => {
     if (slot.isPast) {
-      return { ...slot, available: false };
+      return { 
+        time: slot.time, 
+        available: false,
+        createsGap: false
+      };
+    }
+    
+    if (slot.createsGap) {
+      return {
+        time: slot.time,
+        available: false,
+        createsGap: true
+      };
     }
     
     try {
@@ -266,25 +365,43 @@ const getAvailableTimes = async (tableId, date) => {
         .rpc('is_table_available', {
           p_table_id: tableId,
           p_reservation_date: date,
-          p_start_time: slot.time,
-          p_duration_hours: 1
+          p_start_time: slot.dbTime,
+          p_duration_hours: 0.5
         });
+      
+      if (error) {
+        console.error('RPC Error:', error);
+        return { 
+          time: slot.time, 
+          available: true,
+          createsGap: false
+        };
+      }
       
       return {
         time: slot.time,
-        available: !error && isAvailable
+        available: isAvailable === true,
+        createsGap: false
       };
     } catch (err) {
       console.error('Error checking availability:', err);
-      return { time: slot.time, available: false };
+      return { 
+        time: slot.time, 
+        available: true,
+        createsGap: false
+      };
     }
   });
 
   const results = await Promise.all(availabilityChecks);
   
+  console.log('✅ Final results from getAvailableTimes:', results);
+  console.log('✅ Total time slots:', results.length);
+  console.log('✅ Available slots:', results.filter(r => r.available).length);
+  console.log('✅ Reserved slots:', results.filter(r => !r.available && !r.createsGap).length);
+  console.log('✅ Gap issue slots:', results.filter(r => r.createsGap).length);
   return results;
 };
-
 const checkDateAvailability = async (tableId, date) => {
   if (!date || isDateClosed(date)) {
     return false;
@@ -303,17 +420,35 @@ const checkDateAvailability = async (tableId, date) => {
   }
 
   const activeSchedule = schedules[0];
-  const openTime = activeSchedule.OpenTime;
-  const closeTime = activeSchedule.CloseTime;
+  
+  const parseTime = (timeString) => {
+    if (!timeString) return { hour: 0, minute: 0 };
+    const [hour, minute] = timeString.split(':');
+    return { 
+      hour: parseInt(hour), 
+      minute: parseInt(minute) 
+    };
+  };
 
-  // Check each hour in the schedule
-  for (let hour = openTime; hour <= closeTime; hour++) {
-    const period = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-    const timeString = `${displayHour}:00 ${period}`;
+  const openTime = parseTime(activeSchedule.OpenTime);
+  const closeTime = parseTime(activeSchedule.CloseTime);
+
+  let currentHour = openTime.hour;
+  let currentMinute = openTime.minute;
+  
+  while (currentHour < closeTime.hour || (currentHour === closeTime.hour && currentMinute < closeTime.minute)) {
+    const period = currentHour >= 12 ? 'PM' : 'AM';
+    const displayHour = currentHour === 0 ? 12 : currentHour > 12 ? currentHour - 12 : currentHour;
+    const timeString = `${displayHour}:${String(currentMinute).padStart(2, '0')} ${period}`;
+    const dbTime = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}:00`;
     
     const today = getTodayDate();
     if (date === today && isTimeInPast(timeString, date)) {
+      currentMinute += 30;
+      if (currentMinute >= 60) {
+        currentMinute = 0;
+        currentHour += 1;
+      }
       continue;
     }
 
@@ -322,8 +457,8 @@ const checkDateAvailability = async (tableId, date) => {
         .rpc('is_table_available', {
           p_table_id: tableId,
           p_reservation_date: date,
-          p_start_time: timeString,
-          p_duration_hours: 1
+          p_start_time: dbTime,
+          p_duration_hours: 0.5
         });
       
       if (!error && isAvailable) {
@@ -331,6 +466,12 @@ const checkDateAvailability = async (tableId, date) => {
       }
     } catch (err) {
       console.error('Error checking availability:', err);
+    }
+    
+    currentMinute += 30;
+    if (currentMinute >= 60) {
+      currentMinute = 0;
+      currentHour += 1;
     }
   }
 
@@ -379,29 +520,84 @@ const getMaxAvailableDuration = async (tableId, date, startTime) => {
   if (schedules.length === 0) return 0;
 
   const activeSchedule = schedules[0];
-  const closeTime = activeSchedule.CloseTime;
+  
+  const parseTime = (timeString) => {
+    if (!timeString) return { hour: 0, minute: 0 };
+    const [hour, minute] = timeString.split(':');
+    return { 
+      hour: parseInt(hour), 
+      minute: parseInt(minute) 
+    };
+  };
+
+  const closeTime = parseTime(activeSchedule.CloseTime);
 
   const [time, period] = startTime.split(' ');
-  let [hours] = time.split(':').map(Number);
+  let [hours, minutes] = time.split(':').map(Number);
   
   if (period === 'PM' && hours !== 12) hours += 12;
   if (period === 'AM' && hours === 12) hours = 0;
 
-  const hoursUntilClose = closeTime - hours;
+  const startTimeInHours = hours + (minutes / 60);
+  const closeTimeInHours = closeTime.hour + (closeTime.minute / 60);
+  const maxPossibleHours = closeTimeInHours - startTimeInHours;
+
+  const dbTime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+  
+  const { data: nextReservations, error: resError } = await supabase
+    .from('reservation')
+    .select('start_time')
+    .eq('table_id', tableId)
+    .eq('reservation_date', date)
+    .not('status', 'in', '(cancelled,completed)')
+    .gt('start_time', dbTime)
+    .order('start_time', { ascending: true })
+    .limit(1);
+
+  if (resError) {
+    console.error('Error fetching next reservation:', resError);
+  }
+
+  let maxHoursUntilNextReservation = maxPossibleHours;
+  
+  if (nextReservations && nextReservations.length > 0) {
+    const nextResTime = nextReservations[0].start_time;
+    const [nextHour, nextMinute] = nextResTime.split(':').map(Number);
+    const nextTimeInHours = nextHour + (nextMinute / 60);
+    
+    const availableHours = nextTimeInHours - startTimeInHours - 1;
+    maxHoursUntilNextReservation = Math.max(0, availableHours);
+  }
+
+  const finalMaxHours = Math.min(maxPossibleHours, maxHoursUntilNextReservation);
+
+  const sortedDurations = [...durations].sort((a, b) => a.hours - b.hours);
 
   let maxDuration = 0;
-  for (let duration = 1; duration <= hoursUntilClose; duration++) {
+  for (const duration of sortedDurations) {
+    if (duration.hours > finalMaxHours) {
+      break;
+    }
+
     try {
+      const dbTimeFormatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+
       const { data: isAvailable, error } = await supabase
         .rpc('is_table_available', {
           p_table_id: tableId,
           p_reservation_date: date,
-          p_start_time: startTime,
-          p_duration_hours: duration
+          p_start_time: dbTimeFormatted,
+          p_duration_hours: duration.hours
         });
       
-      if (!error && isAvailable) {
-        maxDuration = duration;
+      if (error) {
+        console.error('RPC Error:', error);
+        maxDuration = duration.hours;
+        continue;
+      }
+      
+      if (isAvailable === true) {
+        maxDuration = duration.hours;
       } else {
         break;
       }
@@ -511,6 +707,9 @@ const handleTableSelect = async (table, info) => {
 };
 
 const handleRescheduleFormChange = async (field, value) => {
+  console.log('📝 Form change:', field, '=', value);
+  console.log('📝 Selected table:', selectedTable);
+  
   setRescheduleForm(prev => ({
     ...prev,
     [field]: value,
@@ -519,6 +718,9 @@ const handleRescheduleFormChange = async (field, value) => {
   }));
   
   if (field === 'date' && selectedTable) {
+    console.log('📅 Date selected:', value);
+    console.log('📅 Calling getAvailableTimes for table:', selectedTable.table_id);
+    
     Swal.fire({
       title: 'Loading available times...',
       allowOutsideClick: false,
@@ -528,16 +730,36 @@ const handleRescheduleFormChange = async (field, value) => {
     });
     
     const times = await getAvailableTimes(selectedTable.table_id, value);
+    console.log('✅ getAvailableTimes returned:', times);
+    console.log('✅ Number of times:', times.length);
+    
+    // Check format of returned data
+    if (times.length > 0) {
+      console.log('✅ Sample time object:', times[0]);
+      console.log('✅ Has time property?', times[0].hasOwnProperty('time'));
+      console.log('✅ Has available property?', times[0].hasOwnProperty('available'));
+      console.log('✅ Has createsGap property?', times[0].hasOwnProperty('createsGap'));
+    }
+    
     setAvailableTimesCache(prev => ({
       ...prev,
       [`${selectedTable.table_id}-${value}`]: times
     }));
+    
+    console.log('💾 Setting availableTimes state to:', times);
     setAvailableTimes(times);
+    
+    // Wait a bit then check if state was updated
+    setTimeout(() => {
+      console.log('⏰ After setState - availableTimes should be updated now');
+    }, 100);
     
     Swal.close();
   }
   
   if (field === 'time' && value && selectedTable) {
+    console.log('⏰ Time selected:', value);
+    
     Swal.fire({
       title: 'Checking available hours...',
       allowOutsideClick: false,
@@ -547,6 +769,7 @@ const handleRescheduleFormChange = async (field, value) => {
     });
     
     const maxDuration = await getMaxAvailableDuration(selectedTable.table_id, rescheduleForm.date, value);
+    console.log('✅ Max duration:', maxDuration);
     
     setMaxDurations(prev => ({
       ...prev,
@@ -943,7 +1166,7 @@ const getStatusIcon = (status) => {
                         fontSize: '14px',
                         color: '#666'
                       }}>
-                        Reference ID: RF{String(reservation.id).padStart(3, '0')}
+  Reference no: {reservation.reservation_no || `RF${String(reservation.id).padStart(3, '0')}`}
                       </p>
                     </div>
 <div style={{
@@ -982,7 +1205,7 @@ const getStatusIcon = (status) => {
                     </div>
                   </div>
 
-                  {/* Duration, Amount, Payment */}
+                 {/* Duration, Amount, Payment, QR Code */}
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
@@ -1016,6 +1239,57 @@ const getStatusIcon = (status) => {
                          reservation.paymentMethod === 'half' ? 'Partial' : 'Pending'}
                       </p>
                     </div>
+                    {/* QR Code View Button */}
+                    {reservation.qr_code && (
+                      <div>
+                        <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#999', fontWeight: '500' }}>
+                          QR Code:
+                        </p>
+                        <button
+                          onClick={() => {
+                            Swal.fire({
+                              title: 'Your QR Code',
+                              html: `
+                                <div style="text-align: center; padding: 20px;">
+                                  <p style="margin: 0 0 15px 0; font-size: 14px; color: #666;">
+                                    Reservation: <strong>${reservation.reservation_no}</strong>
+                                  </p>
+                                  <img src="${reservation.qr_code}" alt="QR Code" style="max-width: 300px; width: 100%; border-radius: 8px;" />
+                                  <p style="margin: 15px 0 0 0; font-size: 12px; color: #999;">
+                                    Show this QR code at the front desk
+                                  </p>
+                                </div>
+                              `,
+                              confirmButtonColor: '#28a745',
+                              confirmButtonText: 'Close',
+                              width: '400px'
+                            });
+                          }}
+                          style={{
+                            padding: '8px 16px',
+                            backgroundColor: '#17a2b8',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            transition: 'background-color 0.2s'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#138496'}
+                          onMouseLeave={e => e.currentTarget.style.backgroundColor = '#17a2b8'}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                          View
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Action Buttons */}
@@ -1133,345 +1407,402 @@ const getStatusIcon = (status) => {
       {/* Modal Content */}
       <div style={{ padding: '30px' }}>
         
-    
-  {/* All Tables in One Section */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-          gap: '25px',
-          marginBottom: '30px'
-        }}>
-          {tables.map(table => {
-            const info = tableInfos.find(i => i.table_id === table.table_id);
-            if (!info) return null;
+ {selectedTable && (
+    <div style={{
+      marginBottom: '30px',
+      padding: '25px',
+      backgroundColor: '#f8f9fa',
+      borderRadius: '8px',
+      border: '2px solid #28a745'
+    }}>
+      <h3 style={{
+        margin: '0 0 20px 0',
+        fontSize: '18px',
+        fontWeight: '600',
+        color: '#28a745'
+      }}>
+        Selected: {selectedTable.table_name} - ₱{parseFloat(selectedTable.info.price).toFixed(2)}/hour
+      </h3>
 
-            const isSelected = selectedTable?.table_id === table.table_id;
-            const isAvailable = info.status === 'Available';
-
-            return (
-              <div
-                key={table.table_id}
-                onClick={() => handleTableSelect(table, info)}
-                style={{
-                  backgroundColor: 'white',
-                  border: isSelected ? '3px solid #28a745' : '2px solid #e9ecef',
-                  borderRadius: '16px',
-                  overflow: 'hidden',
-                  cursor: isAvailable ? 'pointer' : 'not-allowed',
-                  transition: 'all 0.3s ease',
-                  opacity: isAvailable ? 1 : 0.6,
-                  position: 'relative',
-                  boxShadow: isSelected 
-                    ? '0 8px 24px rgba(40,167,69,0.3)' 
-                    : '0 2px 8px rgba(0,0,0,0.08)',
-                  transform: isSelected ? 'translateY(-4px)' : 'none'
-                }}
-              >
-                {/* Status Badge */}
-                <div style={{
-                  position: 'absolute',
-                  top: '12px',
-                  right: '12px',
-                  padding: '6px 14px',
-                  borderRadius: '20px',
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  backgroundColor: isAvailable ? '#28a745' : '#dc3545',
-                  color: 'white',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  zIndex: 2
-                }}>
-                  {isAvailable ? 'AVAILABLE' : 'FULLY BOOKED'}
-                </div>
-
-                {/* Table Image Container */}
-                <div style={{
-                  height: '200px',
-                  backgroundColor: '#f8f9fa',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderBottom: '1px solid #e9ecef'
-                }}>
-                  <span style={{
-                    color: '#adb5bd',
-                    fontSize: '14px',
-                    fontWeight: '500'
-                  }}>
-                    Table Image
-                  </span>
-                </div>
-
-                {/* Table Info */}
-                <div style={{
-                  padding: '24px',
-                  textAlign: 'center'
-                }}>
-                  <h3 style={{
-                    margin: '0 0 8px 0',
-                    fontSize: '20px',
-                    fontWeight: '700',
-                    color: '#2c3e50'
-                  }}>
-                    {table.table_name}
-                  </h3>
-                  <p style={{
-                    margin: '0 0 16px 0',
-                    fontSize: '13px',
-                    color: '#7f8c8d',
-                    fontWeight: '500'
-                  }}>
-                    {info.billiard_type}
-                  </p>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px'
-                  }}>
-                    <p style={{
-                      margin: 0,
-                      fontSize: '28px',
-                      fontWeight: '800',
-                      color: '#28a745'
-                    }}>
-                      ₱{parseFloat(info.price).toFixed(2)}
-                    </p>
-                    <p style={{
-                      margin: 0,
-                      fontSize: '14px',
-                      color: '#95a5a6',
-                      fontWeight: '600'
-                    }}>
-                      /hour
-                    </p>
-                  </div>
-                </div>
-
-                {/* Selected Indicator */}
-                {isSelected && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '0',
-                    left: '0',
-                    right: '0',
-                    height: '4px',
-                    backgroundColor: '#28a745'
-                  }} />
-                )}
-              </div>
-            );
-          })}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '15px'
+      }}>
+        {/* Date */}
+        <div>
+          <label style={{
+            display: 'block',
+            marginBottom: '8px',
+            fontSize: '14px',
+            fontWeight: '600',
+            color: '#555'
+          }}>
+            Date
+          </label>
+          <DatePicker
+            selected={rescheduleForm.date ? new Date(rescheduleForm.date + 'T00:00:00') : null}
+            onChange={(date) => {
+              if (!date) return;
+              
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              const dateString = `${year}-${month}-${day}`;
+              
+              if (isDateClosed(dateString)) {
+                Swal.fire({
+                  icon: 'error',
+                  title: 'Date Closed',
+                  text: 'This date is not available for booking',
+                });
+                return;
+              }
+              
+              handleRescheduleFormChange('date', dateString);
+            }}
+            minDate={new Date()}
+            dateFormat="dd/MM/yyyy"
+            placeholderText="Select a date"
+            filterDate={(date) => {
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              const dateString = `${year}-${month}-${day}`;
+              
+              if (isDateClosed(dateString)) {
+                return false;
+              }
+              
+              const tableUnavailableDates = unavailableDates[selectedTable?.table_id] || [];
+              if (tableUnavailableDates.includes(dateString)) {
+                return false;
+              }
+              
+              return true;
+            }}
+            dayClassName={(date) => {
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              const dateString = `${year}-${month}-${day}`;
+              
+              if (isDateClosed(dateString)) {
+                return 'blocked-date';
+              }
+              
+              const tableUnavailableDates = unavailableDates[selectedTable?.table_id] || [];
+              if (tableUnavailableDates.includes(dateString)) {
+                return 'blocked-date';
+              }
+              
+              return undefined;
+            }}
+            inline={false}
+            showPopperArrow={false}
+            className="custom-datepicker"
+            wrapperClassName="datepicker-wrapper"
+          />
         </div>
 
-        {/* Date, Time, Duration Selection */}
-        {selectedTable && (
-          <div style={{
-            marginTop: '30px',
-            padding: '25px',
-            backgroundColor: '#f8f9fa',
-            borderRadius: '8px',
-            border: '2px solid #28a745'
+        {/* Time */}
+        <div>
+          <label style={{
+            display: 'block',
+            marginBottom: '8px',
+            fontSize: '14px',
+            fontWeight: '600',
+            color: '#555'
           }}>
-            <h3 style={{
-              margin: '0 0 20px 0',
-              fontSize: '18px',
-              fontWeight: '600',
-              color: '#28a745'
-            }}>
-              Selected: {selectedTable.table_name} - ₱{parseFloat(selectedTable.info.price).toFixed(2)}/hour
-            </h3>
-
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: '15px'
-            }}>
-              {/* Date */}
-              <div>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  color: '#555'
-                }}>
-                  Date
-                </label>
-             <DatePicker
-  selected={rescheduleForm.date ? new Date(rescheduleForm.date + 'T00:00:00') : null}
-  onChange={(date) => {
-    if (!date) return;
-    
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const dateString = `${year}-${month}-${day}`;
-    
-    if (isDateClosed(dateString)) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Date Closed',
-        text: 'This date is not available for booking',
-      });
-      return;
-    }
-    
-    handleRescheduleFormChange('date', dateString);
-  }}
-  minDate={new Date()}
-  dateFormat="dd/MM/yyyy"
-  placeholderText="Select a date"
-  filterDate={(date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const dateString = `${year}-${month}-${day}`;
-    
-    if (isDateClosed(dateString)) {
-      return false;
-    }
-    
-    const tableUnavailableDates = unavailableDates[selectedTable?.table_id] || [];
-    if (tableUnavailableDates.includes(dateString)) {
-      return false;
-    }
-    
-    return true;
-  }}
-  dayClassName={(date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const dateString = `${year}-${month}-${day}`;
-    
-    if (isDateClosed(dateString)) {
-      return 'blocked-date';
-    }
-    
-    const tableUnavailableDates = unavailableDates[selectedTable?.table_id] || [];
-    if (tableUnavailableDates.includes(dateString)) {
-      return 'blocked-date';
-    }
-    
-    return undefined;
-  }}
-  inline={false}
-  showPopperArrow={false}
-  className="custom-datepicker"
-  wrapperClassName="datepicker-wrapper"
-/>
-              </div>
-
-              {/* Time */}
-              <div>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  color: '#555'
-                }}>
-                  Time
-                </label>
+            Time
+          </label>
           <select
-  value={rescheduleForm.time}
-  onChange={(e) => handleRescheduleFormChange('time', e.target.value)}
-  disabled={!rescheduleForm.date || isDateClosed(rescheduleForm.date) || availableTimes.length === 0}
-  style={{
-    width: '100%',
-    padding: '10px',
-    border: '1px solid #ddd',
-    borderRadius: '6px',
-    fontSize: '14px',
-    boxSizing: 'border-box',
-    cursor: (!rescheduleForm.date || isDateClosed(rescheduleForm.date) || availableTimes.length === 0) ? 'not-allowed' : 'pointer',
-    opacity: (!rescheduleForm.date || isDateClosed(rescheduleForm.date) || availableTimes.length === 0) ? 0.6 : 1
-  }}
->
-  <option value="">
-    {!rescheduleForm.date 
-      ? 'Select a date first' 
-      : isDateClosed(rescheduleForm.date)
-      ? 'Date is closed'
-      : availableTimes.length === 0
-      ? 'Loading...'
-      : 'Select time'
-    }
-  </option>
-  {availableTimes.map(timeObj => (
-    <option 
-      key={timeObj.time} 
-      value={timeObj.time}
-      disabled={!timeObj.available}
-      style={{
-        backgroundColor: timeObj.available ? 'white' : '#ffebee',
-        color: timeObj.available ? '#333' : '#dc3545',
-        fontWeight: timeObj.available ? 'normal' : '600'
-      }}
-    >
-      {timeObj.time} {!timeObj.available ? '(Reserved)' : ''}
-    </option>
-  ))}
-</select>
-              </div>
+            value={rescheduleForm.time}
+            onChange={(e) => {
+              const selectedTime = e.target.value;
+              const timeObj = availableTimes.find(t => t.time === selectedTime);
+              
+              if (timeObj && timeObj.createsGap) {
+                Swal.fire({
+                  icon: 'warning',
+                  title: 'Time Slot Not Available',
+                  html: `
+                    <p><strong>${selectedTime}</strong> cannot be booked.</p>
+                    <p>This time would create a gap of less than 1 hour with an existing reservation.</p>
+                    <p>Please select a different time slot.</p>
+                  `,
+                  confirmButtonColor: '#28a745',
+                  confirmButtonText: 'OK'
+                });
+                return;
+              }
+              
+              if (timeObj && !timeObj.available) {
+                Swal.fire({
+                  icon: 'error',
+                  title: 'Time Already Reserved',
+                  text: `${selectedTime} is already booked. Please select another time.`,
+                  confirmButtonColor: '#dc3545',
+                  confirmButtonText: 'OK'
+                });
+                return;
+              }
+              
+              handleRescheduleFormChange('time', selectedTime);
+            }}
+            disabled={!rescheduleForm.date || isDateClosed(rescheduleForm.date) || availableTimes.length === 0}
+            style={{
+              width: '100%',
+              padding: '10px',
+              border: '1px solid #ddd',
+              borderRadius: '6px',
+              fontSize: '14px',
+              boxSizing: 'border-box',
+              cursor: (!rescheduleForm.date || isDateClosed(rescheduleForm.date) || availableTimes.length === 0) ? 'not-allowed' : 'pointer',
+              opacity: (!rescheduleForm.date || isDateClosed(rescheduleForm.date) || availableTimes.length === 0) ? 0.6 : 1
+            }}
+          >
+            <option value="">
+              {!rescheduleForm.date 
+                ? 'Select a date first' 
+                : isDateClosed(rescheduleForm.date)
+                ? 'Date is closed'
+                : availableTimes.length === 0
+                ? 'Loading...'
+                : 'Select time'
+              }
+            </option>
+            {availableTimes.map(timeObj => {
+              const isReserved = !timeObj.available && !timeObj.createsGap;
+              const createsGap = timeObj.createsGap;
+              
+              return (
+                <option 
+                  key={timeObj.time} 
+                  value={timeObj.time}
+                  style={{
+                    backgroundColor: isReserved 
+                      ? '#ffebee' 
+                      : createsGap 
+                      ? '#fff3cd' 
+                      : 'white',
+                    color: isReserved 
+                      ? '#dc3545' 
+                      : createsGap 
+                      ? '#856404' 
+                      : '#333',
+                    fontWeight: (isReserved || createsGap) ? '600' : 'normal'
+                  }}
+                >
+                  {timeObj.time} 
+                  {isReserved ? ' (Reserved)' : ''}
+                  {createsGap ? ' (Gap Issue)' : ''}
+                </option>
+              );
+            })}
+          </select>
+        </div>
 
-              {/* Duration */}
-              <div>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  color: '#555'
-                }}>
-                  Duration
-                </label>
-       <select
-  value={rescheduleForm.duration}
-  onChange={(e) => handleRescheduleFormChange('duration', e.target.value)}
-  disabled={!rescheduleForm.time}
-  style={{
-    width: '100%',
-    padding: '10px',
-    border: '1px solid #ddd',
-    borderRadius: '6px',
-    fontSize: '14px',
-    boxSizing: 'border-box',
-    cursor: !rescheduleForm.time ? 'not-allowed' : 'pointer',
-    opacity: !rescheduleForm.time ? 0.6 : 1
-  }}
->
-  <option value="">
-    {!rescheduleForm.time ? 'Select time first' : 'Select duration'}
-  </option>
-  {durations
-    .filter(duration => {
-      const maxDuration = maxDurations[selectedTable?.table_id] || 0;
-      return duration.hours <= maxDuration;
-    })
-    .map(duration => (
-      <option key={duration.id} value={duration.id}>
-        {duration.hours} hour{duration.hours > 1 ? 's' : ''}
-      </option>
-    ))}
-</select>
-{rescheduleForm.time && maxDurations[selectedTable?.table_id] && (
-  <p style={{
-    fontSize: '12px',
-    color: '#666',
-    marginTop: '5px',
-    marginBottom: 0
+        {/* Duration */}
+        <div>
+          <label style={{
+            display: 'block',
+            marginBottom: '8px',
+            fontSize: '14px',
+            fontWeight: '600',
+            color: '#555'
+          }}>
+            Duration
+          </label>
+          <select
+            value={rescheduleForm.duration}
+            onChange={(e) => handleRescheduleFormChange('duration', e.target.value)}
+            disabled={!rescheduleForm.time}
+            style={{
+              width: '100%',
+              padding: '10px',
+              border: '1px solid #ddd',
+              borderRadius: '6px',
+              fontSize: '14px',
+              boxSizing: 'border-box',
+              cursor: !rescheduleForm.time ? 'not-allowed' : 'pointer',
+              opacity: !rescheduleForm.time ? 0.6 : 1
+            }}
+          >
+            <option value="">
+              {!rescheduleForm.time ? 'Select time first' : 'Select duration'}
+            </option>
+            {durations
+              .filter(duration => {
+                const maxDuration = maxDurations[selectedTable?.table_id] || 0;
+                return duration.hours <= maxDuration;
+              })
+              .map(duration => (
+                <option key={duration.id} value={duration.id}>
+                  {duration.hours} hour{duration.hours > 1 ? 's' : ''}
+                </option>
+              ))}
+          </select>
+          {rescheduleForm.time && maxDurations[selectedTable?.table_id] && (
+            <p style={{
+              fontSize: '12px',
+              color: '#666',
+              marginTop: '5px',
+              marginBottom: 0
+            }}>
+              ⏱️ Maximum {maxDurations[selectedTable?.table_id]} hour{maxDurations[selectedTable?.table_id] > 1 ? 's' : ''} available
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* All Tables - WITH IMAGES AND SORTED */}
+  <div style={{
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+    gap: '25px'
   }}>
-    ⏱️ Maximum {maxDurations[selectedTable?.table_id]} hour{maxDurations[selectedTable?.table_id] > 1 ? 's' : ''} available
-  </p>
-)}
+    {tables
+      .sort((a, b) => a.table_id - b.table_id)
+      .map(table => {
+        const info = tableInfos.find(i => i.table_id === table.table_id);
+        if (!info) return null;
+
+        const isSelected = selectedTable?.table_id === table.table_id;
+        const isAvailable = info.status === 'Available';
+
+        return (
+          <div
+            key={table.table_id}
+            onClick={() => handleTableSelect(table, info)}
+            style={{
+              backgroundColor: 'white',
+              border: isSelected ? '3px solid #28a745' : '2px solid #e9ecef',
+              borderRadius: '16px',
+              overflow: 'hidden',
+              cursor: isAvailable ? 'pointer' : 'not-allowed',
+              transition: 'all 0.3s ease',
+              opacity: isAvailable ? 1 : 0.6,
+              position: 'relative',
+              boxShadow: isSelected 
+                ? '0 8px 24px rgba(40,167,69,0.3)' 
+                : '0 2px 8px rgba(0,0,0,0.08)',
+              transform: isSelected ? 'translateY(-4px)' : 'none'
+            }}
+          >
+            {/* Status Badge */}
+            <div style={{
+              position: 'absolute',
+              top: '12px',
+              right: '12px',
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '11px',
+              fontWeight: '700',
+              backgroundColor: isAvailable ? '#28a745' : '#dc3545',
+              color: 'white',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              zIndex: 2
+            }}>
+              {isAvailable ? 'AVAILABLE' : 'FULLY BOOKED'}
+            </div>
+
+            {/* Table Image */}
+            <div style={{
+              height: '200px',
+              backgroundColor: '#f8f9fa',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderBottom: '1px solid #e9ecef',
+              overflow: 'hidden'
+            }}>
+              {table.table_image ? (
+                <img 
+                  src={table.table_image} 
+                  alt={table.table_name}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover'
+                  }}
+                />
+              ) : (
+                <span style={{
+                  color: '#adb5bd',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}>
+                  No Image Available
+                </span>
+              )}
+            </div>
+
+            {/* Table Info */}
+            <div style={{
+              padding: '24px',
+              textAlign: 'center'
+            }}>
+              <h3 style={{
+                margin: '0 0 8px 0',
+                fontSize: '20px',
+                fontWeight: '700',
+                color: '#2c3e50'
+              }}>
+                {table.table_name}
+              </h3>
+              <p style={{
+                margin: '0 0 16px 0',
+                fontSize: '13px',
+                color: '#7f8c8d',
+                fontWeight: '500'
+              }}>
+                {info.billiard_type}
+              </p>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px'
+              }}>
+                <p style={{
+                  margin: 0,
+                  fontSize: '28px',
+                  fontWeight: '800',
+                  color: '#28a745'
+                }}>
+                  ₱{parseFloat(info.price).toFixed(2)}
+                </p>
+                <p style={{
+                  margin: 0,
+                  fontSize: '14px',
+                  color: '#95a5a6',
+                  fontWeight: '600'
+                }}>
+                  /hour
+                </p>
               </div>
             </div>
+
+            {/* Selected Indicator */}
+            {isSelected && (
+              <div style={{
+                position: 'absolute',
+                bottom: '0',
+                left: '0',
+                right: '0',
+                height: '4px',
+                backgroundColor: '#28a745'
+              }} />
+            )}
           </div>
-        )}
-      </div>
+        );
+      })}
+  </div>
+</div>
 
       {/* Modal Footer */}
       <div style={{
