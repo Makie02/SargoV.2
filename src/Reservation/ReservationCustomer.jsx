@@ -575,122 +575,105 @@ const CustomerReservation = () => {
     }
   };
 
-  const handleConfirmReschedule = async () => {
-    if (!selectedTable) {
-      Swal.fire({
-        icon: "warning",
-        title: "No Table Selected",
-        text: "Please select a table",
-      });
-      return;
-    }
+const handleConfirmReschedule = async () => {
+  if (!selectedTable || !rescheduleForm.date || !rescheduleForm.time || !rescheduleForm.duration) {
+    Swal.fire({
+      icon: "warning",
+      title: "Incomplete Information",
+      text: "Please fill in all fields",
+    });
+    return;
+  }
 
-    if (!rescheduleForm.date || !rescheduleForm.time) {
-      Swal.fire({
-        icon: "warning",
-        title: "Missing Information",
-        text: "Please select date and time",
-      });
-      return;
-    }
+  try {
+    const selectedDuration = durations.find(
+      (d) => d.id === parseInt(rescheduleForm.duration)
+    );
 
-    try {
-      if (rescheduleForm.date < getTodayDate()) {
-        Swal.fire({
-          icon: "error",
-          title: "Invalid Date",
-          text: "Cannot book past dates",
-        });
-        return;
-      }
-
-      if (
-        rescheduleForm.date === getTodayDate() &&
-        isTimeInPast(rescheduleForm.time, rescheduleForm.date)
-      ) {
-        Swal.fire({
-          icon: "error",
-          title: "Invalid Time",
-          text: "Cannot book past times",
-        });
-        return;
-      }
-
-      const selectedDuration = durations.find(
-        (d) => d.id === parseInt(rescheduleForm.duration)
-      );
-
-      const { data: endTimeData, error: endTimeError } = await supabase.rpc(
-        "calculate_end_time",
-        {
-          p_start_time: rescheduleForm.time,
-          p_duration_hours: selectedDuration.hours,
-        }
-      );
-
-      if (endTimeError) throw endTimeError;
-
-      const { data: isAvailable, error: availError } = await supabase.rpc(
-        "is_table_available",
-        {
-          p_table_id: selectedTable.table_id,
-          p_reservation_date: rescheduleForm.date,
-          p_start_time: rescheduleForm.time,
-          p_duration_hours: selectedDuration.hours,
-        }
-      );
-
-      if (availError) throw availError;
-
-      if (!isAvailable) {
-        Swal.fire({
-          icon: "error",
-          title: "Table Not Available",
-          text: "This table is already booked at the selected time. Please choose a different time.",
-        });
-        return;
-      }
-
-      const newTotalBill =
-        parseFloat(selectedTable.info.price) * selectedDuration.hours;
-
-      const { error: updateError } = await supabase
-        .from("reservation")
-        .update({
-          table_id: selectedTable.table_id,
-          billiard_type: selectedTable.info.billiard_type,
-          reservation_date: rescheduleForm.date,
-          start_time: rescheduleForm.time,
-          time_end: endTimeData,
-          duration: selectedDuration.hours,
-          total_bill: newTotalBill,
-          status: "rescheduled",
-        })
-        .eq("id", rescheduleData.id);
-
-      if (updateError) throw updateError;
-
-      Swal.fire({
-        icon: "success",
-        title: "Rescheduled!",
-        text: "Your reservation has been rescheduled successfully.",
-        timer: 1500,
-        showConfirmButton: false,
-      });
-
-      setShowReschedule(false);
-      setRescheduleData(null);
-      setSelectedTable(null);
-      fetchReservations();
-    } catch (error) {
-      console.error("Error rescheduling reservation:", error);
+    if (!selectedDuration) {
       Swal.fire({
         icon: "error",
-        title: "Error",
-        text: error.message || "Failed to reschedule reservation",
+        title: "Invalid Duration",
+        text: "Please select a valid duration",
       });
+      return;
     }
-  };
+
+    // Calculate end time
+    const { data: endTimeData, error: endTimeError } = await supabase.rpc(
+      "calculate_end_time",
+      {
+        p_start_time: rescheduleForm.time,
+        p_duration_hours: selectedDuration.hours,
+      }
+    );
+
+    if (endTimeError) throw endTimeError;
+
+    // Check availability
+    const { data: isAvailable, error: availError } = await supabase.rpc(
+      "is_table_available",
+      {
+        p_table_id: selectedTable.table_id,
+        p_reservation_date: rescheduleForm.date,
+        p_start_time: rescheduleForm.time,
+        p_duration_hours: selectedDuration.hours,
+      }
+    );
+
+    if (availError) throw availError;
+
+    if (!isAvailable) {
+      Swal.fire({
+        icon: "error",
+        title: "Table Not Available",
+        text: "This table is already booked at the selected time.",
+      });
+      return;
+    }
+
+    const newTotalBill =
+      parseFloat(selectedTable.info.price) * selectedDuration.hours;
+
+    // ✅ CREATE RESCHEDULE REQUEST (NOT UPDATE RESERVATION YET)
+    const { error: insertError } = await supabase
+      .from("reschedule_request")
+      .insert({
+        reservation_id: rescheduleData.id,
+        account_id: currentUser.account_id,
+        new_table_id: selectedTable.table_id,
+        new_reservation_date: rescheduleForm.date,
+        new_start_time: rescheduleForm.time,
+        new_time_end: endTimeData,
+        new_duration: selectedDuration.hours,
+        new_billiard_type: selectedTable.info.billiard_type,
+        new_total_bill: newTotalBill,
+        status: 'pending'
+      });
+
+    if (insertError) throw insertError;
+
+    Swal.fire({
+      icon: "success",
+      title: "Reschedule Request Sent!",
+      text: "Your reschedule request has been submitted. Waiting for manager approval.",
+      timer: 2000,
+      showConfirmButton: false,
+    });
+
+    setShowReschedule(false);
+    setRescheduleData(null);
+    setSelectedTable(null);
+    fetchReservations();
+  } catch (error) {
+    console.error("Error creating reschedule request:", error);
+    Swal.fire({
+      icon: "error",
+      title: "Error",
+      text: error.message || "Failed to submit reschedule request",
+    });
+  }
+};
 
   const handleCancelReschedule = () => {
     setShowReschedule(false);
@@ -1841,34 +1824,39 @@ const CustomerReservation = () => {
                 Cancel
               </button>
               <button
-                onClick={handleConfirmReschedule}
-                disabled={
-                  !selectedTable || !rescheduleForm.date || !rescheduleForm.time
-                }
-                style={{
-                  padding: "12px 30px",
-                  backgroundColor: "#28a745",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  fontSize: "16px",
-                  fontWeight: "600",
-                  cursor:
-                    !selectedTable ||
-                    !rescheduleForm.date ||
-                    !rescheduleForm.time
-                      ? "not-allowed"
-                      : "pointer",
-                  opacity:
-                    !selectedTable ||
-                    !rescheduleForm.date ||
-                    !rescheduleForm.time
-                      ? 0.5
-                      : 1,
-                }}
-              >
-                Confirm Reschedule
-              </button>
+  onClick={handleConfirmReschedule}
+  disabled={
+    !selectedTable || 
+    !rescheduleForm.date || 
+    !rescheduleForm.time || 
+    !rescheduleForm.duration // ✅ ADD duration check
+  }
+  style={{
+    padding: "12px 30px",
+    backgroundColor: "#28a745",
+    color: "white",
+    border: "none",
+    borderRadius: "6px",
+    fontSize: "16px",
+    fontWeight: "600",
+    cursor:
+      !selectedTable ||
+      !rescheduleForm.date ||
+      !rescheduleForm.time ||
+      !rescheduleForm.duration // ✅ ADD duration check
+        ? "not-allowed"
+        : "pointer",
+    opacity:
+      !selectedTable ||
+      !rescheduleForm.date ||
+      !rescheduleForm.time ||
+      !rescheduleForm.duration // ✅ ADD duration check
+        ? 0.5
+        : 1,
+  }}
+>
+  Confirm Reschedule
+</button>
             </div>
           </div>
         </div>
