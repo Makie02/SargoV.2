@@ -129,10 +129,7 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
       <nav className="flex-1 overflow-y-auto py-2">
 
         {/* DASHBOARDS - Role Based */}
-        {userRole === "admin" && (
-          <NavItem icon={LayoutDashboard} label="Admin Dashboard" page="dashboard"
-            currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-        )}
+     
 
         {userRole === "manager" && (
           <>
@@ -191,8 +188,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
               currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
             <NavItem icon={QrCode} label="QR Check-In" page="QRCheckInPage"
               currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-            <NavItem icon={QrCode} label="Finalize Payment" page="FinalizePayment"
-              currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
+            <NavItem icon={QrCode} label="Finalize Payment" page="finalize"
+              currentPage={currentPage} onClick={setCurrentPage}  onMobileClick={closeMobileMenu} />
           </>
         )}
 
@@ -241,7 +238,7 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           </div>
         )}
       </nav>
-
+            
       {/* SUPPORT */}
       <div className="border-t border-gray-200 p-2">
         <NavItem
