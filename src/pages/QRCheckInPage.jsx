@@ -836,7 +836,7 @@ const handleSearch = async (query = searchQuery) => {
             opacity: 1;
           }
           100% {
-            top: 100%;
+            top: 100%; 
             opacity: 0;
           }
         }
