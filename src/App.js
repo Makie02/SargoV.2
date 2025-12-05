@@ -27,6 +27,7 @@ import HomeDashboardUpload from "./components/HomeDashboardUpload";
 import ForgotPassword from "./components/ForgotPassword";
 import MarketingDashboard from "./dashboard/MarketingDashboard";
 import ResetPassword from "./components/ResetPassword";
+import CancelBookings from "./components/CancelBookings";
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState(null);
@@ -105,7 +106,7 @@ function App() {
   }, [currentPage]);
 
   // Load session & profile
-// Load session & profile
+  // Load session & profile
   useEffect(() => {
     const loadSession = async () => {
       const sessionData = localStorage.getItem("userSession");
@@ -118,7 +119,7 @@ function App() {
 
         // ✅ FIXED: Prioritize saved page over default pages
         const savedPage = localStorage.getItem("currentPage");
-        
+
         // Default pages for first login only
         const defaultPages = {
           customer: 'CustomerDashboard',
@@ -332,7 +333,7 @@ function App() {
     // Frontdesk access
     if (frontdeskPages.includes(page)) return userRole === "frontdesk";
 
-    // Manager access
+    // Manager access 
     if (managerPages.includes(page)) return userRole === "manager";
 
     // Common pages accessible by all
@@ -516,14 +517,23 @@ function App() {
     }
   };
   const renderPage = () => {
+    // Auto-redirect to appropriate page if no access
     if (!hasAccess(currentPage)) {
-      return (
-        <div className="p-8">
-          <h2 className="text-2xl font-bold text-red-600">Access Denied</h2>
-          <p className="mt-4">You don't have permission to view this page.</p>
-        </div>
-      );
+      const defaultPages = {
+        customer: 'CustomerDashboard',
+        frontdesk: 'frontDeskDashboard',
+        manager: 'ManagerDashboard',
+        admin: 'dashboard',
+        superadmin: 'dashboard'
+      };
+
+      const defaultPage = defaultPages[userRole] || 'dashboard';
+      setTimeout(() => setCurrentPage(defaultPage), 0);
+      return null;
     }
+
+
+    // ... rest of your pages
 
     const pages = {
       dashboard: <Dashboard />,
@@ -539,7 +549,8 @@ function App() {
       ReservationFrontDesk: <ReservationFrontDesk />,
       CustomerReservation: <CustomerReservation />,
       Payment: <Payment />,
-      FinalizePayment: <FinalizePayment />,
+      finalize: <FinalizePayment />,
+
       UserManagement: <UserManagement />,
       ManagerDashboard: <ManagerDashboard />,
       profile: <ViewProfile />,
@@ -547,7 +558,7 @@ function App() {
       MarketingDashboard: <MarketingDashboard />,
       ResetPassword: <ResetPassword />,
 
-
+      CancelBookings: <CancelBookings />,
 
 
     };
@@ -556,13 +567,13 @@ function App() {
   };
 
   const [isResetPasswordPage, setIsResetPasswordPage] = useState(false);
-  
+
   // ... rest of your existing state
 
   // ✅ Check URL on mount
   useEffect(() => {
     const hash = window.location.hash;
-    
+
     // Check if it's a password reset link from Supabase
     if (hash.includes('type=recovery')) {
       setIsResetPasswordPage(true);
@@ -819,9 +830,9 @@ function App() {
 
                                     {note.status && (
                                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${note.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                          note.status === 'confirmed' ? 'bg-green-100 text-green-700' :
-                                            note.status === 'cancelled' ? 'bg-red-100 text-red-700' :
-                                              'bg-gray-100 text-gray-700'
+                                        note.status === 'confirmed' ? 'bg-green-100 text-green-700' :
+                                          note.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                                            'bg-gray-100 text-gray-700'
                                         }`}>
                                         📋 {note.status}
                                       </span>
