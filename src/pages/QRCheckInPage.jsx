@@ -170,16 +170,31 @@ const fetchReservations = async () => {
   };
 
 const onScanSuccess = (decodedText) => {
-    // Set the search query to the scanned text
-    setSearchQuery(decodedText);
+    let searchValue = decodedText;
+    
+    // Try to parse as JSON to extract reservationNo
+    try {
+      const parsed = JSON.parse(decodedText);
+      if (parsed.reservationNo) {
+        searchValue = parsed.reservationNo;
+      }
+    } catch (e) {
+      // If not valid JSON, use the raw text
+      searchValue = decodedText;
+    }
+    
+    // Set the search query to the extracted reservation number
+    setSearchQuery(searchValue);
     // Automatically search using the scanned QR code
-    handleSearch(decodedText);
+    handleSearch(searchValue);
     // Stop the scanner after successful scan
     stopScanner();
   };
   const onScanError = (error) => {
     // Silent - normal scanning errors
   };
+
+  
 
   const stopScanner = async () => {
     if (html5QrCodeRef.current && isScanning) {
