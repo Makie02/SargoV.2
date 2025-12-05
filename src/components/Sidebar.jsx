@@ -135,7 +135,7 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           <>
             <NavItem icon={LayoutDashboard} label="Manager Dashboard" page="ManagerDashboard"
               currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-            <NavItem icon={TrendingUp} label="Marketing Dashboard" page="MarketingDashboard"
+            <NavItem icon={TrendingUp} label="Revenue Dashboard" page="MarketingDashboard"
               currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
           </>
         )}
