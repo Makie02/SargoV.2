@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from "../lib/supabaseClient";
-import { Calendar, Clock, DollarSign, TrendingUp } from 'lucide-react';
+import { Calendar, Clock, DollarSign, TrendingUp, Eye, X } from 'lucide-react';
+import Swal from 'sweetalert2';
 
 const ManagerDashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -10,31 +11,34 @@ const ManagerDashboard = () => {
   const [dailyRevenue, setDailyRevenue] = useState(0);
   const [revenueTarget, setRevenueTarget] = useState(10000);
   const [rescheduleRequests, setRescheduleRequests] = useState([]); 
-   const [currentUser, setCurrentUser] = useState(null);
-const [tables, setTables] = useState([]);  
+  const [currentUser, setCurrentUser] = useState(null);
+  const [tables, setTables] = useState([]);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
 
-useEffect(() => {
-  const userSession = localStorage.getItem('userSession');
-  console.log('📦 User Session:', userSession);
-  if (userSession) {
-    const userData = JSON.parse(userSession);
-    console.log('👤 Current User:', userData);
-    setCurrentUser(userData);
-  }
-  
-  fetchDashboardData();
-}, []);
+  useEffect(() => {
+    const userSession = localStorage.getItem('userSession');
+    console.log('📦 User Session:', userSession);
+    if (userSession) {
+      const userData = JSON.parse(userSession);
+      console.log('👤 Current User:', userData);
+      setCurrentUser(userData);
+    }
+    
+    fetchDashboardData();
+  }, []);
 
-// Also add this - place it right after the first useEffect
-useEffect(() => {
-  console.log('🔐 Can View Reschedules:', canViewReschedules());
-  console.log('👤 Current User State:', currentUser);
-}, [currentUser]);
-const canViewReschedules = () => {
-  if (!currentUser) return false;
-  const allowedRoles = ['admin', 'manager', 'superadmin'];
-  return allowedRoles.includes(currentUser.role?.toLowerCase());
-};
+  useEffect(() => {
+    console.log('🔐 Can View Reschedules:', canViewReschedules());
+    console.log('👤 Current User State:', currentUser);
+  }, [currentUser]);
+
+  const canViewReschedules = () => {
+    if (!currentUser) return false;
+    const allowedRoles = ['admin', 'manager', 'superadmin'];
+    return allowedRoles.includes(currentUser.role?.toLowerCase());
+  };
+
   const getTodayDate = () => {
     const today = new Date();
     const year = today.getFullYear();
@@ -86,30 +90,49 @@ const canViewReschedules = () => {
       setTableStatuses(tablesData || []);
 
       // Calculate daily revenue from today's reservations
-    const { data: revenueData, error: revenueError } = await supabase
-  .from('reservation')
-  .select('total_bill')
-  .eq('reservation_date', today)
-  .in('status', ['approved', 'completed', 'ongoing']);
+      const { data: revenueData, error: revenueError } = await supabase
+        .from('reservation')
+        .select('total_bill')
+        .eq('reservation_date', today)
+        .in('status', ['approved', 'completed', 'ongoing']);
 
-  if (revenueError) throw revenueError;
+      if (revenueError) throw revenueError;
 
-const totalRevenue = revenueData?.reduce((sum, item) => sum + (item.total_bill || 0), 0) || 0;
-setDailyRevenue(totalRevenue);
-const { data: rescheduleData, error: rescheduleError } = await supabase
-  .from('reservation')
-  .select('*')
-  .eq('status', 'rescheduled')
+      const totalRevenue = revenueData?.reduce((sum, item) => sum + (item.total_bill || 0), 0) || 0;
+      setDailyRevenue(totalRevenue);
+
+ const { data: rescheduleData, error: rescheduleError } = await supabase
+  .from('reschedule_request')
+  .select(`
+    *,
+    reservation:reservation_id (
+      reservation_no,
+      reference_no,
+      reservation_date,
+      start_time,
+      time_end,
+      duration,
+      billiard_type,
+      total_bill,
+      table_id
+    )
+  `)
+  .eq('status', 'pending')
   .order('created_at', { ascending: false });
 
-if (!rescheduleError && rescheduleData) {
-  // Fetch customer details separately for each reservation
+    if (!rescheduleError && rescheduleData) {
+  // Add this line to check raw data
+  console.log('📊 Raw Reschedule Data:', JSON.stringify(rescheduleData, null, 2));
+  
+  // Fetch customer details separately for each reschedule request
   const enrichedData = await Promise.all(
-    rescheduleData.map(async (reservation) => {
+    rescheduleData.map(async (request) => {
+      console.log('🔍 Processing request:', request.id, 'Reservation ID:', request.reservation_id);
+      
       const { data: customerData } = await supabase
         .from('customer')
         .select('first_name, middle_name, last_name, email')
-        .eq('account_id', reservation.account_id)
+        .eq('account_id', request.account_id)
         .single();
       
       // Combine name fields
@@ -117,8 +140,11 @@ if (!rescheduleError && rescheduleData) {
         ? `${customerData.first_name} ${customerData.middle_name ? customerData.middle_name + ' ' : ''}${customerData.last_name}`.trim()
         : 'Unknown';
       
+      console.log('👤 Customer:', fullName, customerData);
+      console.log('📋 Reservation data:', request.reservation);
+      
       return {
-        ...reservation,
+        ...request,
         customer: {
           full_name: fullName,
           email: customerData?.email || 'N/A'
@@ -127,20 +153,19 @@ if (!rescheduleError && rescheduleData) {
     })
   );
   
-  console.log('✅ Reschedule Data:', enrichedData);
+  console.log('✅ Final Enriched Data:', enrichedData);
   setRescheduleRequests(enrichedData || []);
 } else if (rescheduleError) {
-  console.error('❌ Error fetching reschedules:', rescheduleError);
-}
+        console.error('❌ Error fetching reschedules:', rescheduleError);
+      }
 
+      // Fetch tables for names
+      const { data: tablesDataList, error: tablesListError } = await supabase
+        .from('billiard_table')
+        .select('*');
 
-// ✅ ADD THIS: Fetch tables for names
-const { data: tablesDataList, error: tablesListError } = await supabase
-  .from('billiard_table')
-  .select('*');
-
-if (tablesListError) throw tablesListError;
-setTables(tablesDataList || []);
+      if (tablesListError) throw tablesListError;
+      setTables(tablesDataList || []);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -176,62 +201,170 @@ setTables(tablesDataList || []);
     return tableStatuses.length;
   };
 
- const getInMaintenanceCount = () => {
-  return tableStatuses.filter(t => t.status?.toLowerCase() === 'maintenance').length;
-};
+  const getInMaintenanceCount = () => {
+    return tableStatuses.filter(t => t.status?.toLowerCase() === 'maintenance').length;
+  };
 
-// ✅ ADD THESE FUNCTIONS
-const getTableName = (tableId) => {
-  const table = tables.find(t => t.table_id === tableId);
-  return table ? table.table_name : 'Unknown Table';
-};
+  const getTableName = (tableId) => {
+    const table = tables.find(t => t.table_id === tableId);
+    return table ? table.table_name : 'Unknown Table';
+  };
 
-const formatDate = (dateString) => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
-};
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
 
-const handleApproveReschedule = async (reservationId) => {
-  try {
-    const { error } = await supabase
-      .from('reservation')
-      .update({ status: 'approved' })
-      .eq('id', reservationId);
+  const handleApproveReschedule = async (rescheduleRequestId) => {
+    const result = await Swal.fire({
+      title: 'Approve Reschedule?',
+      text: 'Are you sure you want to approve this reschedule request?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#28a745',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: 'Yes, approve it!',
+      cancelButtonText: 'Cancel'
+    });
 
-    if (error) throw error;
+    if (!result.isConfirmed) return;
 
-    // Refresh data
-    fetchDashboardData();
-  } catch (error) {
-    console.error('Error approving reschedule:', error);
-    alert('Failed to approve reschedule request');
+    try {
+      // Get the reschedule request details
+      const { data: rescheduleRequest, error: fetchError } = await supabase
+        .from('reschedule_request')
+        .select('*')
+        .eq('id', rescheduleRequestId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Update the original reservation with new details
+      const { error: updateError } = await supabase
+        .from('reservation')
+        .update({
+          table_id: rescheduleRequest.new_table_id,
+          reservation_date: rescheduleRequest.new_reservation_date,
+          start_time: rescheduleRequest.new_start_time,
+          time_end: rescheduleRequest.new_time_end,
+          duration: rescheduleRequest.new_duration,
+          billiard_type: rescheduleRequest.new_billiard_type,
+          total_bill: rescheduleRequest.new_total_bill,
+          status: 'approved'
+        })
+        .eq('id', rescheduleRequest.reservation_id);
+
+      if (updateError) throw updateError;
+
+      // Delete the reschedule request
+      const { error: deleteError } = await supabase
+        .from('reschedule_request')
+        .delete()
+        .eq('id', rescheduleRequestId);
+
+      if (deleteError) throw deleteError;
+
+      await Swal.fire({
+        title: 'Approved!',
+        text: 'Reschedule request has been approved successfully!',
+        icon: 'success',
+        confirmButtonColor: '#28a745'
+      });
+
+      fetchDashboardData();
+    } catch (error) {
+      console.error('Error approving reschedule:', error);
+      Swal.fire({
+        title: 'Error!',
+        text: 'Failed to approve reschedule request',
+        icon: 'error',
+        confirmButtonColor: '#dc3545'
+      });
+    }
+  };
+
+  const handleRejectReschedule = async (rescheduleRequestId) => {
+    const result = await Swal.fire({
+      title: 'Reject Reschedule?',
+      text: 'The original reservation will remain unchanged.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc3545',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: 'Yes, reject it!',
+      cancelButtonText: 'Cancel'
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      // Simply delete the reschedule request - original reservation stays unchanged
+      const { error: deleteError } = await supabase
+        .from('reschedule_request')
+        .delete()
+        .eq('id', rescheduleRequestId);
+
+      if (deleteError) throw deleteError;
+
+      await Swal.fire({
+        title: 'Rejected!',
+        text: 'Reschedule request has been rejected. Original reservation remains unchanged.',
+        icon: 'success',
+        confirmButtonColor: '#28a745'
+      });
+
+      fetchDashboardData();
+    } catch (error) {
+      console.error('Error rejecting reschedule:', error);
+      Swal.fire({
+        title: 'Error!',
+        text: 'Failed to reject reschedule request',
+        icon: 'error',
+        confirmButtonColor: '#dc3545'
+      });
+    }
+  };
+
+  const handleViewDetails = (request) => {
+    setSelectedRequest(request);
+    setShowDetailsModal(true);
+  };
+
+  const closeDetailsModal = () => {
+    setShowDetailsModal(false);
+    setSelectedRequest(null);
+  };
+
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#f5f5f5'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '50px',
+            height: '50px',
+            border: '5px solid #e0e0e0',
+            borderTop: '5px solid #28a745',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto'
+          }}></div>
+          <p style={{ marginTop: '15px', color: '#666' }}>Loading dashboard...</p>
+        </div>
+      </div>
+    );
   }
-};
 
-const handleRejectReschedule = async (reservationId) => {
-  try {
-    const { error } = await supabase
-      .from('reservation')
-      .update({ status: 'cancelled' })
-      .eq('id', reservationId);
-
-    if (error) throw error;
-
-    // Refresh data
-    fetchDashboardData();
-  } catch (error) {
-    console.error('Error rejecting reschedule:', error);
-    alert('Failed to reject reschedule request');
-  }
-};
-
-
-
-  return (
+return (
     <div style={{
       minHeight: '100vh',
       backgroundColor: '#f5f5f5',
@@ -262,234 +395,8 @@ const handleRejectReschedule = async (reservationId) => {
           </p>
         </div>
 
-        {/* Stats Cards */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '20px',
-          marginBottom: '30px'
-        }}>
-          {/* Today's Bookings */}
-          <div style={{
-            backgroundColor: 'white',
-            padding: '30px',
-            borderRadius: '12px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            position: 'relative',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              marginBottom: '15px'
-            }}>
-              <div>
-                <p style={{
-                  margin: '0 0 5px 0',
-                  fontSize: '14px',
-                  color: '#666',
-                  fontWeight: '500'
-                }}>
-                  Today's Bookings
-                </p>
-              </div>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '8px',
-                backgroundColor: '#e3f2fd',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Calendar size={20} color="#2196F3" />
-              </div>
-            </div>
-            <h2 style={{
-              margin: '0 0 10px 0',
-              fontSize: '36px',
-              fontWeight: '700',
-              color: '#333'
-            }}>
-              {todayBookings}
-            </h2>
-            <p style={{
-              margin: 0,
-              fontSize: '13px',
-              color: todayBookings >= yesterdayBookings ? '#28a745' : '#dc3545',
-              fontWeight: '600'
-            }}>
-              {getBookingDifference()} from yesterday
-            </p>
-          </div>
-
-          {/* Peak Hours */}
-          <div style={{
-            backgroundColor: 'white',
-            padding: '30px',
-            borderRadius: '12px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            position: 'relative',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              marginBottom: '15px'
-            }}>
-              <div>
-                <p style={{
-                  margin: '0 0 5px 0',
-                  fontSize: '14px',
-                  color: '#666',
-                  fontWeight: '500'
-                }}>
-                  Peak Hours
-                </p>
-              </div>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '8px',
-                backgroundColor: '#fce4ec',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Clock size={20} color="#e91e63" />
-              </div>
-            </div>
-            <h2 style={{
-              margin: '0 0 10px 0',
-              fontSize: '36px',
-              fontWeight: '700',
-              color: '#333'
-            }}>
-              6-9 PM
-            </h2>
-            <p style={{
-              margin: 0,
-              fontSize: '13px',
-              color: '#666',
-              fontWeight: '500'
-            }}>
-              Highest traffic
-            </p>
-          </div>
-
-          {/* Available Tables */}
-          <div style={{
-            backgroundColor: 'white',
-            padding: '30px',
-            borderRadius: '12px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            position: 'relative',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              marginBottom: '15px'
-            }}>
-              <div>
-                <p style={{
-                  margin: '0 0 5px 0',
-                  fontSize: '14px',
-                  color: '#666',
-                  fontWeight: '500'
-                }}>
-                  Available Tables
-                </p>
-              </div>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '8px',
-                backgroundColor: '#e8f5e9',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <TrendingUp size={20} color="#28a745" />
-              </div>
-            </div>
-            <h2 style={{
-              margin: '0 0 10px 0',
-              fontSize: '36px',
-              fontWeight: '700',
-              color: '#333'
-            }}>
-              {getAvailableTablesCount()}/{getTotalTablesCount()}
-            </h2>
-            <p style={{
-              margin: 0,
-              fontSize: '13px',
-              color: '#666',
-              fontWeight: '500'
-            }}>
-              {getInMaintenanceCount()} in maintenance
-            </p>
-          </div>
-
-          {/* Daily Revenue */}
-          <div style={{
-            backgroundColor: 'white',
-            padding: '30px',
-            borderRadius: '12px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            position: 'relative',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              marginBottom: '15px'
-            }}>
-              <div>
-                <p style={{
-                  margin: '0 0 5px 0',
-                  fontSize: '14px',
-                  color: '#666',
-                  fontWeight: '500'
-                }}>
-                  Daily Revenue
-                </p>
-              </div>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '8px',
-                backgroundColor: '#fff3e0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <DollarSign size={20} color="#ff9800" />
-              </div>
-            </div>
-            <h2 style={{
-              margin: '0 0 10px 0',
-              fontSize: '36px',
-              fontWeight: '700',
-              color: '#333'
-            }}>
-              ₱{dailyRevenue.toLocaleString()}
-            </h2>
-            <p style={{
-              margin: 0,
-              fontSize: '13px',
-              color: '#666',
-              fontWeight: '500'
-            }}>
-              Target: ₱{revenueTarget.toLocaleString()}
-            </p>
-          </div>
-        </div>
-{rescheduleRequests.length > 0 && canViewReschedules() && (
+        {/* Reschedule Requests Section */}
+        {rescheduleRequests.length > 0 && canViewReschedules() && (
           <div style={{
             backgroundColor: 'white',
             padding: '30px',
@@ -511,125 +418,120 @@ const handleRejectReschedule = async (reservationId) => {
               flexDirection: 'column',
               gap: '15px'
             }}>
-{rescheduleRequests.length === 0 ? (
-  <div style={{
-    padding: '40px',
-    textAlign: 'center',
-    color: '#999'
-  }}>
-    <p style={{ margin: 0, fontSize: '14px' }}>No pending reschedule requests</p>
-  </div>
-) : (
-  rescheduleRequests.map((request) => (                <div
-                  key={request.id}
-                  style={{
-                    padding: '20px',
-                    border: '1px solid #e0e0e0',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    backgroundColor: '#fff9e6',
-                    gap: '15px',
-                    flexWrap: 'wrap'
-                  }}
-                >
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '15px',
-                    flex: 1,
-                    minWidth: '300px'
-                  }}>
-                    {/* Warning Icon */}
+              {rescheduleRequests.length === 0 ? (
+                <div style={{
+                  padding: '40px',
+                  textAlign: 'center',
+                  color: '#999'
+                }}>
+                  <p style={{ margin: 0, fontSize: '14px' }}>No pending reschedule requests</p>
+                </div>
+              ) : (
+                rescheduleRequests.map((request) => (
+                  <div
+                    key={request.id}
+                    style={{
+                      padding: '20px',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      backgroundColor: '#fff9e6',
+                      gap: '15px',
+                      flexWrap: 'wrap'
+                    }}
+                  >
                     <div style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '50%',
-                      backgroundColor: '#fff3cd',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
+                      gap: '15px',
+                      flex: 1,
+                      minWidth: '300px'
+                    }}>
+                      {/* Warning Icon */}
+                      <div style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '50%',
+                        backgroundColor: '#fff3cd',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        <Calendar size={20} color="#ff9800" />
+                      </div>
+
+                      {/* Request Info */}
+                      <div style={{ flex: 1 }}>
+                        <h3 style={{
+                          margin: '0 0 5px 0',
+                          fontSize: '16px',
+                          fontWeight: '700',
+                          color: '#333'
+                        }}>
+                          Reschedule Request
+                        </h3>
+                        <p style={{
+                          margin: '0 0 3px 0',
+                          fontSize: '14px',
+                          color: '#666'
+                        }}>
+                          {getTableName(request.new_table_id)} - {request.new_billiard_type || 'Standard'}
+                        </p>
+                        <p style={{
+                          margin: 0,
+                          fontSize: '13px',
+                          color: '#999'
+                        }}>
+                          Customer: {request.customer?.full_name || 'Unknown'} • {formatDate(request.new_reservation_date)} at {request.new_start_time}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Button */}
+                    <div style={{
+                      display: 'flex',
+                      gap: '10px',
                       flexShrink: 0
                     }}>
-                      <Calendar size={20} color="#ff9800" />
-                    </div>
-
-                    {/* Request Info */}
-                    <div style={{ flex: 1 }}>
-                      <h3 style={{
-                        margin: '0 0 5px 0',
-                        fontSize: '16px',
-                        fontWeight: '700',
-                        color: '#333'
-                      }}>
-                        Reschedule Request
-                      </h3>
-                      <p style={{
-                        margin: '0 0 3px 0',
-                        fontSize: '14px',
-                        color: '#666'
-                      }}>
-                        {getTableName(request.table_id)} - {request.billiard_type || 'Standard'}
-                      </p>
-                      <p style={{
-                        margin: 0,
-                        fontSize: '13px',
-                        color: '#999'
-                      }}>
-Customer: {request.customer?.full_name || 'Unknown'} • {formatDate(request.reservation_date)} at {request.start_time}                      </p>
+                      <button
+                        onClick={() => handleViewDetails(request)}
+                        style={{
+                          padding: '10px 18px',
+                          backgroundColor: '#f8f9fa',
+                          color: '#333',
+                          border: '1px solid #ddd',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          fontWeight: '500',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#e9ecef';
+                          e.currentTarget.style.borderColor = '#ccc';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#f8f9fa';
+                          e.currentTarget.style.borderColor = '#ddd';
+                        }}
+                      >
+                        <Eye size={16} />
+                        View Details
+                      </button>
                     </div>
                   </div>
-
-                  {/* Action Buttons */}
-                  <div style={{
-                    display: 'flex',
-                    gap: '10px',
-                    flexShrink: 0
-                  }}>
-                    <button
-                      onClick={() => handleApproveReschedule(request.id)}
-                      style={{
-                        padding: '8px 20px',
-                        backgroundColor: '#28a745',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        transition: 'background-color 0.2s'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#218838'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#28a745'}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => handleRejectReschedule(request.id)}
-                      style={{
-                        padding: '8px 20px',
-                        backgroundColor: '#dc3545',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        transition: 'background-color 0.2s'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#c82333'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#dc3545'}
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </div>
-       ))
+                ))
               )}
             </div>
           </div>
         )}
+
         {/* Table Status Overview */}
         <div style={{
           backgroundColor: 'white',
@@ -705,6 +607,302 @@ Customer: {request.customer?.full_name || 'Unknown'} • {formatDate(request.res
             ))}
           </div>
         </div>
+
+        {/* Details Modal */}
+        {showDetailsModal && selectedRequest && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}
+          onClick={closeDetailsModal}>
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              maxWidth: '800px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}>
+              {/* Modal Header */}
+              <div style={{
+                padding: '25px 30px',
+                borderBottom: '1px solid #e0e0e0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                position: 'sticky',
+                top: 0,
+                backgroundColor: 'white',
+                zIndex: 1
+              }}>
+                <h2 style={{
+                  margin: 0,
+                  fontSize: '24px',
+                  fontWeight: '700',
+                  color: '#333'
+                }}>
+                  Reservation Details
+                </h2>
+                <button
+                  onClick={closeDetailsModal}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '5px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#666',
+                    transition: 'color 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = '#333'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = '#666'}
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div style={{ padding: '30px' }}>
+                {/* Status Badge */}
+                <div style={{
+                  display: 'inline-block',
+                  padding: '8px 16px',
+                  borderRadius: '20px',
+                  fontSize: '14px',
+                  fontWeight: '700',
+                  backgroundColor: '#fff3cd',
+                  color: '#ff9800',
+                  marginBottom: '25px',
+                  textTransform: 'uppercase'
+                }}>
+                  {selectedRequest.status}
+                </div>
+
+                {/* Customer Info */}
+                <div style={{
+                  marginBottom: '25px',
+                  padding: '15px',
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '140px 1fr',
+                    gap: '10px',
+                    fontSize: '15px'
+                  }}>
+                    <div style={{ fontWeight: '600', color: '#666' }}>Reservation No:</div>
+                    <div style={{ color: '#333' }}>{selectedRequest.reservation?.reservation_no || '-'}</div>
+
+                    <div style={{ fontWeight: '600', color: '#666' }}>Reference No:</div>
+                    <div style={{ color: '#333' }}>{selectedRequest.reservation?.reference_no || '-'}</div>
+
+                    <div style={{ fontWeight: '600', color: '#666' }}>Customer:</div>
+                    <div style={{ color: '#333' }}>{selectedRequest.customer?.full_name || 'Unknown'}</div>
+
+                    <div style={{ fontWeight: '600', color: '#666' }}>Email:</div>
+                    <div style={{ color: '#333' }}>{selectedRequest.customer?.email || '-'}</div>
+
+                    <div style={{ fontWeight: '600', color: '#666' }}>Request Date:</div>
+                    <div style={{ color: '#333' }}>
+                      {new Date(selectedRequest.created_at).toLocaleString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Two Column Comparison */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '20px',
+                  marginBottom: '25px'
+                }}>
+                  {/* Original Details Column */}
+                  <div style={{
+                    padding: '20px',
+                    backgroundColor: '#f8f9fa',
+                    borderRadius: '8px',
+                    border: '2px solid #e0e0e0'
+                  }}>
+                    <h3 style={{
+                      margin: '0 0 15px 0',
+                      fontSize: '16px',
+                      fontWeight: '700',
+                      color: '#666',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}>
+                      Original Details
+                    </h3>
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                      fontSize: '14px'
+                    }}>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#666', marginBottom: '4px' }}>Table:</div>
+                        <div style={{ color: '#333' }}>{getTableName(selectedRequest.reservation?.table_id)}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#666', marginBottom: '4px' }}>Billiard Type:</div>
+                        <div style={{ color: '#333' }}>{selectedRequest.reservation?.billiard_type || 'Standard'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#666', marginBottom: '4px' }}>Date:</div>
+                        <div style={{ color: '#333' }}>{formatDate(selectedRequest.reservation?.reservation_date)}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#666', marginBottom: '4px' }}>Time:</div>
+                        <div style={{ color: '#333' }}>
+                          {selectedRequest.reservation?.start_time}
+                          {selectedRequest.reservation?.time_end && ` - ${selectedRequest.reservation.time_end}`}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#666', marginBottom: '4px' }}>Duration:</div>
+                        <div style={{ color: '#333' }}>{selectedRequest.reservation?.duration || '-'} hour(s)</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#666', marginBottom: '4px' }}>Total Bill:</div>
+                        <div style={{ color: '#333', fontWeight: '700' }}>
+                          ₱{parseFloat(selectedRequest.reservation?.total_bill || 0).toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Reschedule Request Column */}
+                  <div style={{
+                    padding: '20px',
+                    backgroundColor: '#fff9e6',
+                    borderRadius: '8px',
+                    border: '2px solid #ffc107'
+                  }}>
+                    <h3 style={{
+                      margin: '0 0 15px 0',
+                      fontSize: '16px',
+                      fontWeight: '700',
+                      color: '#ff9800',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}>
+                      Reschedule Request
+                    </h3>
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                      fontSize: '14px'
+                    }}>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#666', marginBottom: '4px' }}>Table:</div>
+                        <div style={{ color: '#333' }}>{getTableName(selectedRequest.new_table_id)}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#666', marginBottom: '4px' }}>Billiard Type:</div>
+                        <div style={{ color: '#333' }}>{selectedRequest.new_billiard_type || 'Standard'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#666', marginBottom: '4px' }}>Date:</div>
+                        <div style={{ color: '#333' }}>{formatDate(selectedRequest.new_reservation_date)}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#666', marginBottom: '4px' }}>Time:</div>
+                        <div style={{ color: '#333' }}>
+                          {selectedRequest.new_start_time}
+                          {selectedRequest.new_time_end && ` - ${selectedRequest.new_time_end}`}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#666', marginBottom: '4px' }}>Duration:</div>
+                        <div style={{ color: '#333' }}>{selectedRequest.new_duration || '-'} hour(s)</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#666', marginBottom: '4px' }}>Total Bill:</div>
+                        <div style={{ color: '#333', fontWeight: '700' }}>
+                          ₱{parseFloat(selectedRequest.new_total_bill || 0).toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons in Modal */}
+                <div style={{
+                  marginTop: '30px',
+                  paddingTop: '20px',
+                  borderTop: '1px solid #e0e0e0',
+                  display: 'flex',
+                  gap: '10px',
+                  justifyContent: 'flex-end'
+                }}>
+                  <button
+                    onClick={() => {
+                      handleApproveReschedule(selectedRequest.id);
+                      closeDetailsModal();
+                    }}
+                    style={{
+                      padding: '10px 24px',
+                      backgroundColor: '#28a745',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#218838'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#28a745'}
+                  >
+                    Approve Reschedule
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleRejectReschedule(selectedRequest.id);
+                      closeDetailsModal();
+                    }}
+                    style={{
+                      padding: '10px 24px',
+                      backgroundColor: '#dc3545',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#c82333'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#dc3545'}
+                  >
+                    Reject Reschedule
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <style>
