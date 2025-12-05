@@ -81,7 +81,7 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
 
   const handleLogout = () => {
     localStorage.removeItem("userSession");
-    window.location.href = "/login";
+    window.location.href = "";
   };
 
   // SIDEBAR CONTENT
