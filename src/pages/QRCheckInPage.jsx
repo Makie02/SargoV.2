@@ -169,11 +169,14 @@ const fetchReservations = async () => {
     }
   };
 
-  const onScanSuccess = (decodedText) => {
+const onScanSuccess = (decodedText) => {
+    // Set the search query to the scanned text
+    setSearchQuery(decodedText);
+    // Automatically search using the scanned QR code
     handleSearch(decodedText);
+    // Stop the scanner after successful scan
     stopScanner();
   };
-
   const onScanError = (error) => {
     // Silent - normal scanning errors
   };
