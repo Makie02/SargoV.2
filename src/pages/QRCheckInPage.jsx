@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { QrCode, CheckCircle, X, AlertCircle, FileImage, FolderOpen, Search } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -356,7 +357,7 @@ const handleSearch = async (query = searchQuery) => {
         const { error } = await supabase
           .from('reservation')
           .update({ 
-            status: 'approved',
+            status: 'pending',
             payment_status: true,
             reference_no: generatedRefNo
           })
@@ -390,7 +391,7 @@ const handleSearch = async (query = searchQuery) => {
         const { error } = await supabase
           .from('reservation')
           .update({ 
-            status: 'approved',
+            status: 'pending',
             reference_no: gcashRefNo
           })
           .eq('id', selectedReservation.id);
@@ -422,7 +423,7 @@ const handleSearch = async (query = searchQuery) => {
       try {
         const { error } = await supabase
           .from('reservation')
-          .update({ status: 'approved' })
+          .update({ status: 'pending' })
           .eq('id', selectedReservation.id);
 
         if (error) throw error;
@@ -497,14 +498,14 @@ const handleSearch = async (query = searchQuery) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 p-6 flex justify-center">
+    <div className="flex justify-center min-h-screen p-6 bg-gradient-to-br from-slate-100 to-slate-200">
 
       {/* Left Section (Scanner + Manual Search) */}
       <div className="bg-white shadow-xl rounded-2xl p-6 w-[430px] h-[600px]">
-        <h1 className="text-2xl font-bold text-gray-800 mb-4">QR Code Verification</h1>
+        <h1 className="mb-4 text-2xl font-bold text-gray-800">QR Code Verification</h1>
 
         {/* GCash-style QR Scanner */}
-        <div className="rounded-xl overflow-hidden mb-4 relative" style={{ height: '250px' }}>
+        <div className="relative mb-4 overflow-hidden rounded-xl" style={{ height: '250px' }}>
           {scannerActive ? (
             <div className="relative w-full h-full">
               <div id="qr-reader" className="w-full h-full"></div>
@@ -524,23 +525,23 @@ const handleSearch = async (query = searchQuery) => {
                 </div>
                 
                 {/* Instructions text */}
-                <div className="absolute bottom-4 left-0 right-0 text-center">
-                  <p className="text-white text-sm font-semibold bg-black/60 px-4 py-2 rounded-full inline-block">
+                <div className="absolute left-0 right-0 text-center bottom-4">
+                  <p className="inline-block px-4 py-2 text-sm font-semibold text-white rounded-full bg-black/60">
                     Align QR code within frame
                   </p>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-8 border-2 border-dashed border-blue-300 h-full flex flex-col justify-center items-center">
+            <div className="flex flex-col items-center justify-center h-full p-8 border-2 border-blue-300 border-dashed bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl">
               <div className="relative">
                 <QrCode size={60} className="text-blue-500" />
                 {/* Decorative scan lines */}
-                <div className="absolute -inset-2 border-2 border-blue-300 rounded-lg opacity-50"></div>
-                <div className="absolute -inset-4 border-2 border-blue-200 rounded-lg opacity-30"></div>
+                <div className="absolute border-2 border-blue-300 rounded-lg opacity-50 -inset-2"></div>
+                <div className="absolute border-2 border-blue-200 rounded-lg -inset-4 opacity-30"></div>
               </div>
-              <p className="text-blue-700 font-semibold text-base mt-4">Scan QR Code</p>
-              <p className="text-blue-500 text-xs mt-1">Position QR code within frame</p>
+              <p className="mt-4 text-base font-semibold text-blue-700">Scan QR Code</p>
+              <p className="mt-1 text-xs text-blue-500">Position QR code within frame</p>
             </div>
           )}
         </div>
@@ -565,7 +566,7 @@ const handleSearch = async (query = searchQuery) => {
             <select
               value={selectedCamera || ''}
               onChange={(e) => setSelectedCamera(e.target.value)}
-              className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               {cameraDevices.map((device) => (
                 <option key={device.id} value={device.id}>
@@ -576,13 +577,13 @@ const handleSearch = async (query = searchQuery) => {
           </div>
         )}
 
-        <p className="text-center text-gray-400 text-xs mt-4 mb-2">OR</p>
+        <p className="mt-4 mb-2 text-xs text-center text-gray-400">OR</p>
 
         {/* Real-time Search with Suggestions */}
         <div className="relative" ref={searchRef}>
           <div className="flex gap-2">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <div className="relative flex-1">
+              <Search className="absolute text-gray-400 transform -translate-y-1/2 left-3 top-1/2" size={18} />
               <input
                 type="text"
                 placeholder="Search reservation number..."
@@ -590,12 +591,12 @@ const handleSearch = async (query = searchQuery) => {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && handleSearch()}
                 onFocus={() => searchQuery && setShowSuggestions(true)}
-                className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full py-2 pl-10 pr-4 transition-all border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
             <button
               onClick={() => handleSearch()}
-              className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition font-semibold"
+              className="px-4 py-2 text-sm font-semibold text-white transition bg-gray-900 rounded-lg hover:bg-gray-800"
             >
               Verify
             </button>
@@ -603,14 +604,14 @@ const handleSearch = async (query = searchQuery) => {
 
           {/* Real-time Suggestions Dropdown */}
           {showSuggestions && filteredReservations.length > 0 && (
-            <div className="absolute z-10 w-full mt-2 bg-white border-2 border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+            <div className="absolute z-10 w-full mt-2 overflow-y-auto bg-white border-2 border-gray-200 rounded-lg shadow-xl max-h-60">
               {filteredReservations.map((reservation) => (
                 <div
                   key={reservation.id}
                   onClick={() => handleSuggestionClick(reservation)}
-                  className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors"
+                  className="px-4 py-3 transition-colors border-b border-gray-100 cursor-pointer hover:bg-blue-50 last:border-b-0"
                 >
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center justify-between">
                     <div>
                       <p className="font-semibold text-gray-800">{reservation.reservation_no}</p>
                       <p className="text-xs text-gray-500">Table {reservation.table_id} • {reservation.reservation_date}</p>
@@ -630,18 +631,18 @@ const handleSearch = async (query = searchQuery) => {
 
       {/* MODAL FOR RESERVATION DETAILS */}
       {selectedReservation && !confirmationModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-[600px] relative">
 
             <button
               onClick={() => setSelectedReservation(null)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-black"
+              className="absolute text-gray-500 top-4 right-4 hover:text-black"
             >
               <X size={22} />
             </button>
 
             <div ref={cardRef}>
-              <h2 className="text-2xl font-bold text-green-600 flex items-center gap-2">
+              <h2 className="flex items-center gap-2 text-2xl font-bold text-green-600">
                 <CheckCircle size={26} className="text-green-500" />
                 Reservation Verified
               </h2>
@@ -665,21 +666,21 @@ const handleSearch = async (query = searchQuery) => {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={downloadPDF}
-                className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition"
+                className="flex-1 py-3 font-semibold text-white transition bg-blue-600 rounded-xl hover:bg-blue-700"
               >
                 Download PDF
               </button>
 
               <button
                 onClick={saveAsImage}
-                className="flex-1 py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition"
+                className="flex-1 py-3 font-semibold text-white transition bg-purple-600 rounded-xl hover:bg-purple-700"
               >
                 Save Image
               </button>
 
               <button
                 onClick={() => setShowProofModal(true)}
-                className="flex-1 py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 transition flex items-center justify-center gap-2"
+                className="flex items-center justify-center flex-1 gap-2 py-3 font-semibold text-white transition bg-amber-600 rounded-xl hover:bg-amber-700"
               >
                 {selectedReservation.proof_of_payment ? (
                   <>
@@ -697,7 +698,7 @@ const handleSearch = async (query = searchQuery) => {
 
             <button
               onClick={handleCheckInClick}
-              className="mt-4 w-full py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition"
+              className="w-full py-3 mt-4 font-semibold text-white transition bg-green-600 rounded-xl hover:bg-green-700"
             >
               Check-in Customer
             </button>
@@ -707,12 +708,12 @@ const handleSearch = async (query = searchQuery) => {
 
       {/* CONFIRMATION MODAL */}
       {selectedReservation && confirmationModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-[500px] relative">
             
             <button
               onClick={() => setConfirmationModal(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-black"
+              className="absolute text-gray-500 top-4 right-4 hover:text-black"
             >
               <X size={22} />
             </button>
@@ -722,14 +723,14 @@ const handleSearch = async (query = searchQuery) => {
               <h2 className="text-2xl font-bold text-gray-800">Confirm Check-in</h2>
             </div>
 
-            <div className="bg-gray-50 rounded-lg p-4 mb-6 space-y-3">
+            <div className="p-4 mb-6 space-y-3 rounded-lg bg-gray-50">
               <Detail label="Reservation No" value={selectedReservation.reservation_no || "N/A"} />
               <Detail label="Table" value={`Table ${selectedReservation.table_id}`} />
               <Detail label="Payment Method" value={selectedReservation.paymentMethod || "N/A"} />
               <Detail label="Payment Type" value={selectedReservation.payment_type || "N/A"} />
               <Detail label="Total Bill" value={`₱${selectedReservation.total_bill || 0}`} />
               {generatedRefNo && (
-                <div className="bg-blue-50 border-2 border-blue-200 rounded p-2 mt-3">
+                <div className="p-2 mt-3 border-2 border-blue-200 rounded bg-blue-50">
                   <Detail label="Reference No" value={generatedRefNo} />
                 </div>
               )}
@@ -737,7 +738,7 @@ const handleSearch = async (query = searchQuery) => {
 
             {selectedReservation.paymentMethod === 'GCash' && (
               <div className="mb-6">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block mb-2 text-sm font-semibold text-gray-700">
                   GCash Reference Number <span className="text-red-600">*</span>
                 </label>
                 <input
@@ -745,14 +746,14 @@ const handleSearch = async (query = searchQuery) => {
                   placeholder="Enter GCash Reference Number"
                   value={gcashRefNo}
                   onChange={(e) => setGcashRefNo(e.target.value)}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-2 transition-all border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             )}
 
             {selectedReservation.paymentMethod === 'Cash' && selectedReservation.payment_type === 'Full Payment' && (
-              <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4 mb-6">
-                <p className="text-green-700 font-semibold text-sm">
+              <div className="p-4 mb-6 border-2 border-green-200 rounded-lg bg-green-50">
+                <p className="text-sm font-semibold text-green-700">
                   ✓ Payment will be marked as <strong>COMPLETE</strong> upon check-in
                 </p>
               </div>
@@ -761,13 +762,13 @@ const handleSearch = async (query = searchQuery) => {
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirmationModal(false)}
-                className="flex-1 py-3 bg-gray-300 text-gray-800 rounded-xl font-semibold hover:bg-gray-400 transition"
+                className="flex-1 py-3 font-semibold text-gray-800 transition bg-gray-300 rounded-xl hover:bg-gray-400"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmCheckIn}
-                className="flex-1 py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition"
+                className="flex-1 py-3 font-semibold text-white transition bg-green-600 rounded-xl hover:bg-green-700"
               >
                 Confirm Check-in
               </button>
@@ -783,23 +784,23 @@ const handleSearch = async (query = searchQuery) => {
             
             <button
               onClick={() => setShowProofModal(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-black z-10"
+              className="absolute z-10 text-gray-500 top-4 right-4 hover:text-black"
             >
               <X size={22} />
             </button>
 
-            <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <h2 className="flex items-center gap-2 mb-4 text-2xl font-bold text-gray-800">
               <FileImage size={26} className="text-amber-600" />
               Proof of Payment
             </h2>
 
-            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+            <div className="p-4 mb-4 rounded-lg bg-gray-50">
               <Detail label="Reservation No" value={selectedReservation.reservation_no || "N/A"} />
               <Detail label="Payment Method" value={selectedReservation.paymentMethod || "N/A"} />
             </div>
 
             {selectedReservation.proof_of_payment ? (
-              <div className="bg-white border-2 border-gray-200 rounded-lg p-4">
+              <div className="p-4 bg-white border-2 border-gray-200 rounded-lg">
                 <img 
                   src={selectedReservation.proof_of_payment} 
                   alt="Proof of Payment"
@@ -807,16 +808,16 @@ const handleSearch = async (query = searchQuery) => {
                 />
               </div>
             ) : (
-              <div className="bg-gray-100 rounded-lg p-12 flex flex-col items-center justify-center border-2 border-dashed border-gray-300">
-                <FolderOpen size={60} className="text-gray-400 mb-4" />
-                <p className="text-gray-500 text-lg font-semibold">No Proof of Payment</p>
-                <p className="text-gray-400 text-sm mt-2">Customer has not uploaded proof of payment yet.</p>
+              <div className="flex flex-col items-center justify-center p-12 bg-gray-100 border-2 border-gray-300 border-dashed rounded-lg">
+                <FolderOpen size={60} className="mb-4 text-gray-400" />
+                <p className="text-lg font-semibold text-gray-500">No Proof of Payment</p>
+                <p className="mt-2 text-sm text-gray-400">Customer has not uploaded proof of payment yet.</p>
               </div>
             )}
 
             <button
               onClick={() => setShowProofModal(false)}
-              className="mt-6 w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-900 transition"
+              className="w-full py-3 mt-6 font-semibold text-white transition bg-gray-800 rounded-xl hover:bg-gray-900"
             >
               Close
             </button>
@@ -849,8 +850,8 @@ const handleSearch = async (query = searchQuery) => {
 
 function Detail({ label, value }) {
   return (
-    <div className="flex justify-between border-b pb-1">
-      <span className="font-medium text-sm">{label}:</span>
+    <div className="flex justify-between pb-1 border-b">
+      <span className="text-sm font-medium">{label}:</span>
       <span className="text-sm">{value}</span>
     </div>
   );
