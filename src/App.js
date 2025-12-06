@@ -38,6 +38,187 @@ function App() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [isDesktopOpen, setIsDesktopOpen] = useState(true);
 
+
+
+
+
+  const [permissions, setPermissions] = useState({});
+  const [noPermissionsData, setNoPermissionsData] = useState(false);
+
+  // Fetch role permissions
+useEffect(() => {
+  const loadSession = async () => {
+    const sessionData = localStorage.getItem("userSession");
+    if (!sessionData) return;
+
+    try {
+      const session = JSON.parse(sessionData);
+      setUserRole(session.role);
+      setIsLoggedIn(true);
+
+      const savedPage = localStorage.getItem("currentPage");
+
+      // ✅ Updated default pages
+      const defaultPages = {
+        customer: 'Customer Dashboard',
+        frontdesk: 'FrontDesk Dashboard',
+        manager: 'Manager Dashboard',
+        admin: 'Admin Dashboard',
+        superadmin: 'Admin Dashboard'
+      };
+
+      if (savedPage) {
+        setCurrentPage(savedPage);
+      } else {
+        setCurrentPage(defaultPages[session.role] || 'Admin Dashboard');
+      }
+
+      const { data, error } = await supabase
+        .from("accounts")
+        .select("*")
+        .eq("email", session.email)
+        .single();
+
+      if (!error) {
+        setUserProfile({
+          name: session.full_name || session.username || "User",
+          email: data.email,
+          role: data.role,
+          profilePicture: data.ProfilePicuture || "",
+        });
+      }
+    } catch (error) {
+      console.error("Error parsing session:", error);
+      localStorage.removeItem("userSession");
+    }
+  };
+  loadSession();
+}, []);
+useEffect(() => {
+  const fetchRolePermissions = async () => {
+    const sessionData = localStorage.getItem("userSession");
+    if (!sessionData) return;
+
+    try {
+      const session = JSON.parse(sessionData);
+      const userRole = session.role;
+
+      if (!userRole) {
+        console.warn("⚠️ No role found in session");
+        setNoPermissionsData(true);
+        return;
+      }
+
+      // ✅ ADMIN BYPASS - Grant all permissions
+      if (userRole.toLowerCase() === "admin") {
+        console.log("✅ Admin detected - Full access granted");
+        const allPermissions = {
+          "Admin Dashboard": true,
+          "Manager Dashboard": true,
+          "Customer Dashboard": true,
+          "FrontDesk Dashboard": true,
+          "Reservation (Admin)": true,
+          "Reservation (Manager)": true,
+          "Reservation (Customer)": true,
+          "Reservation (Front Desk)": true,
+          "QR Check-In": true,
+          "Finalize Payment": true,
+          "Calendar": true,
+          "History": true,
+          "User Management": true,
+          "Reference": true,
+          "Audit Trail": true,
+          "profile": true,
+          "CancelBookings": true,
+        };
+        setPermissions(allPermissions);
+        setNoPermissionsData(false);
+        return;
+      }
+
+      // Fetch from database for other roles
+      const { data: roleData, error: roleError } = await supabase
+        .from("UserRole")
+        .select("role_id, role")
+        .ilike("role", userRole)
+        .maybeSingle();
+
+      if (roleError || !roleData) {
+        console.error("❌ Error fetching role:", roleError);
+        setNoPermissionsData(true);
+        return;
+      }
+
+      const roleId = roleData.role_id;
+      console.log("✅ Found role_id:", roleId, "for role:", roleData.role);
+
+      const { data: permsData, error: permsError } = await supabase
+        .from("Role_Permission")
+        .select("page, has_access")
+        .eq("role_id", roleId);
+
+      if (permsError) {
+        console.error("❌ Error fetching permissions:", permsError);
+        setNoPermissionsData(true);
+        return;
+      }
+
+      if (!permsData || permsData.length === 0) {
+        console.warn("⚠️ No permissions found for role_id:", roleId);
+        
+        // Default permissions
+        const defaultPerms = {
+          frontdesk: {
+            "FrontDesk Dashboard": true,
+            "Reservation (Front Desk)": true,
+            "QR Check-In": true,
+            "Finalize Payment": true,
+            "Calendar": true,
+            "profile": true,
+            "History": true,
+          },
+          customer: {
+            "Customer Dashboard": true,
+            "Reservation (Customer)": true,
+            "Calendar": true,
+            "profile": true,
+            "History": true,
+            "CancelBookings": true,
+          },
+          manager: {
+            "Manager Dashboard": true,
+            "Reservation (Manager)": true,
+            "Calendar": true,
+            "profile": true,
+            "History": true,
+          }
+        };
+        
+        setPermissions(defaultPerms[userRole.toLowerCase()] || {});
+        setNoPermissionsData(false);
+        return;
+      }
+
+      const permissionsObj = {};
+      permsData.forEach(({ page, has_access }) => {
+        permissionsObj[page] = has_access === true;
+      });
+
+      console.log("✅ Permissions loaded:", permissionsObj);
+      setPermissions(permissionsObj);
+      setNoPermissionsData(false);
+
+    } catch (error) {
+      console.error("❌ Error in fetchRolePermissions:", error);
+      setNoPermissionsData(true);
+    }
+  };
+
+  if (isLoggedIn) {
+    fetchRolePermissions();
+  }
+}, [isLoggedIn]);
+
   const [userProfile, setUserProfile] = useState({
     name: "",
     email: "",
@@ -283,32 +464,30 @@ function App() {
       console.error("Error updating notifications:", error);
     }
   };
-  const handleLoginSuccess = async (sessionData) => {
-    // ✅ Set role FIRST before setting page
-    setUserRole(sessionData.role);
-    setIsLoggedIn(true);
+const handleLoginSuccess = async (sessionData) => {
+  setUserRole(sessionData.role);
+  setIsLoggedIn(true);
 
-    // ✅ Use a small delay to ensure state is updated
-    setTimeout(() => {
-      switch (sessionData.role) {
-        case 'customer':
-          setCurrentPage('CustomerDashboard');
-          break;
-        case 'frontdesk':
-          setCurrentPage('frontDeskDashboard');
-          break;
-        case 'manager':
-          setCurrentPage('ManagerDashboard');
-          break;
-        case 'admin':
-        case 'superadmin':
-          setCurrentPage('dashboard');
-          break;
-        default:
-          setCurrentPage('dashboard');
-      }
-    }, 0);
-  };
+  setTimeout(() => {
+    switch (sessionData.role) {
+      case 'customer':
+        setCurrentPage('Customer Dashboard');
+        break;
+      case 'frontdesk':
+        setCurrentPage('FrontDesk Dashboard');
+        break;
+      case 'manager':
+        setCurrentPage('Manager Dashboard');
+        break;
+      case 'admin':
+      case 'superadmin':
+        setCurrentPage('Admin Dashboard');
+        break;
+      default:
+        setCurrentPage('Admin Dashboard');
+    }
+  }, 0);
+};
   const handleLogout = () => {
     setIsLoggedIn(false);
     setUserRole(null);
@@ -321,31 +500,40 @@ function App() {
   const customerPages = ["CustomerDashboard", "CustomerReservation", "Payment"];
   const frontdeskPages = ["frontDeskDashboard", "ReservationFrontDesk", "QRCheckInPage"];
   const managerPages = ["ManagerDashboard"];
-  const hasAccess = (page) => {
-    if (userRole === "admin") return true;
+const hasAccess = (page) => {
+  // ✅ ADMIN has access to everything
+  if (userRole === "admin") return true;
 
-    // Admin access
-    if (adminPages.includes(page)) return userRole === "admin" || userRole === "admin";
+  // Check permissions from database
+  if (permissions[page] !== undefined) {
+    return permissions[page] === true;
+  }
 
-    // Customer access
-    if (customerPages.includes(page)) return userRole === "customer";
-
-    // Frontdesk access
-    if (frontdeskPages.includes(page)) return userRole === "frontdesk";
-
-    // Manager access 
-    if (managerPages.includes(page)) return userRole === "manager";
-
-    // Common pages accessible by all
-    return ["calendar", "profile", "history"].includes(page);
-  };
-
+  // Common pages accessible by all (fallback)
+  const commonPages = ["Calendar", "profile", "History", "CancelBookings"];
+  return commonPages.includes(page);
+};
 
 
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [adminNotificationOpen, setAdminNotificationOpen] = useState(false);
 
-
+  const NotFoundPage = () => (
+    <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="text-center">
+        <h1 className="text-6xl font-bold text-gray-300 mb-4">403</h1>
+        <h2 className="text-2xl font-semibold text-gray-700 mb-2">Access Denied</h2>
+        <p className="text-gray-500 mb-6">You don't have permission to access this page.</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Refresh Page
+        </button>
+      </div>
+    </div>
+  );
+  // Show NotFoundPage if no permissions data
 
   // Admin Notifications from Reservation Table
   // Admin Notifications from Reservation Table
@@ -516,49 +704,59 @@ function App() {
       console.error("Error updating admin notifications:", error);
     }
   };
-  const renderPage = () => {
-    // Auto-redirect to appropriate page if no access
-    if (!hasAccess(currentPage)) {
-      const defaultPages = {
-        customer: 'CustomerDashboard',
-        frontdesk: 'frontDeskDashboard',
-        manager: 'ManagerDashboard',
-        admin: 'dashboard',
-        superadmin: 'dashboard'
-      };
+const renderPage = () => {
+  // Check access before rendering
+  if (!hasAccess(currentPage)) {
+    const defaultPages = {
+      customer: 'Customer Dashboard',
+      frontdesk: 'FrontDesk Dashboard',
+      manager: 'Manager Dashboard',
+      admin: 'Admin Dashboard',
+      superadmin: 'Admin Dashboard'
+    };
 
-      const defaultPage = defaultPages[userRole] || 'dashboard';
-      setTimeout(() => setCurrentPage(defaultPage), 0);
-      return null;
-    }
+    const defaultPage = defaultPages[userRole] || 'Admin Dashboard';
+    
+    // Redirect to default page
+    setTimeout(() => setCurrentPage(defaultPage), 0);
+    
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-gray-600">Redirecting to your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
+  if (isLoggedIn && noPermissionsData) {
+    return <NotFoundPage />;
+  }
 
-    // ... rest of your pages
-
-    const pages = {
-      dashboard: <Dashboard />,
-      reservation: <Reservation />,
-      history: <History />,
-      calendar: <ReservationCalendar />,
-      approvals: <Approvals />,
-      auditTrail: <AuditTrail />,
-      Reference: <Reference />,
-      frontDeskDashboard: <FrontDeskDashboard />,
-      CustomerDashboard: <CustomerDashboard />,
-      QRCheckInPage: <QRCheckInPage />,
-      ReservationFrontDesk: <ReservationFrontDesk />,
-      CustomerReservation: <CustomerReservation />,
-      Payment: <Payment />,
-      finalize: <FinalizePayment />,
-
-      UserManagement: <UserManagement />,
-      ManagerDashboard: <ManagerDashboard />,
-      profile: <ViewProfile />,
-      homeDashboardUpload: <HomeDashboardUpload />,
-      MarketingDashboard: <MarketingDashboard />,
-      ResetPassword: <ResetPassword />,
-
-      CancelBookings: <CancelBookings />,
+  const pages = {
+    // ✅ NEW - With Spaces (matches Sidebar & Database)
+    "Admin Dashboard": <Dashboard />,
+    "Manager Dashboard": <ManagerDashboard />,
+    "Customer Dashboard": <CustomerDashboard />,
+    "FrontDesk Dashboard": <FrontDeskDashboard />,
+    "Reservation (Admin)": <Reservation />,
+    "Reservation (Manager)": <Reservation />,
+    "Reservation (Customer)": <CustomerReservation />,
+    "Reservation (Front Desk)": <ReservationFrontDesk />,
+    "QR Check-In": <QRCheckInPage />,
+    "Finalize Payment": <FinalizePayment />,
+    "Calendar": <ReservationCalendar />,
+    "History": <History />,
+    "User Management": <UserManagement />,
+    "Reference": <Reference />,
+    "Audit Trail": <AuditTrail />,
+    
+    // ✅ Keep these for backward compatibility
+    "Profile": <ViewProfile />,
+    "CancelBookings": <CancelBookings />,
+    "Payment": <Payment />,
+    "ResetPassword": <ResetPassword />,
+    "homeDashboardUpload": <HomeDashboardUpload />,
 
 
     };
