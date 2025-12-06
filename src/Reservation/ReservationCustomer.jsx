@@ -1131,8 +1131,8 @@ const handleConfirmReschedule = async () => {
                           : "Pending"}
                       </p>
                     </div>
-                    {/* QR Code */}
-                    {reservation.qr_code && (
+                {/* QR Code - Only show for approved, ongoing, or completed reservations */}
+                    {reservation.qr_code && reservation.status !== "pending" && reservation.status !== "rescheduled" && (
                       <div>
                         <p
                           style={{
