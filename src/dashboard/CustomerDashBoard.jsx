@@ -16,11 +16,11 @@ const CustomerDashboard = () => {
   const [timeDates, setTimeDates] = useState([]);
   const [showPayment, setShowPayment] = useState(false);
   const [reservationData, setReservationData] = useState(null);
- const [tableFormData, setTableFormData] = useState({});
- const [availableTimesCache, setAvailableTimesCache] = useState({});
- const [unavailableDates, setUnavailableDates] = useState({});
+  const [tableFormData, setTableFormData] = useState({});
+  const [availableTimesCache, setAvailableTimesCache] = useState({});
+  const [unavailableDates, setUnavailableDates] = useState({});
  const [maxDurations, setMaxDurations] = useState({});
-
+const [tableStatuses, setTableStatuses] = useState({});
 const handleTableFormChange = async (tableId, field, value) => {
   setTableFormData(prev => ({
     ...prev,
@@ -154,6 +154,68 @@ const checkDateAvailability = async (tableId, date) => {
 
   return false;
 };
+const checkTableAvailabilityForDate = async (tableId, date) => {
+  try {
+    const dayName = getDayNameFromDate(date);
+    
+    const schedules = timeDates.filter(td => 
+      td.Date === dayName && 
+      td.Actions === 'Active' && 
+      !td.CloseDay
+    );
+
+    if (schedules.length === 0) {
+      return { isFullyBooked: true, reason: 'No schedule' };
+    }
+
+    const activeSchedule = schedules[0];
+    
+    const parseTime = (timeString) => {
+      if (!timeString) return { hour: 0, minute: 0 };
+      const [hour, minute] = timeString.split(':');
+      return { 
+        hour: parseInt(hour), 
+        minute: parseInt(minute) 
+      };
+    };
+
+    const openTime = parseTime(activeSchedule.OpenTime);
+    const closeTime = parseTime(activeSchedule.CloseTime);
+
+    const totalMinutes = (closeTime.hour * 60 + closeTime.minute) - (openTime.hour * 60 + openTime.minute);
+    
+    const { data: reservations, error } = await supabase
+      .from('reservation')
+      .select('start_time, time_end, duration')
+      .eq('table_id', tableId)
+      .eq('reservation_date', date)
+      .neq('status', 'cancelled');
+
+    if (error) throw error;
+
+    if (!reservations || reservations.length === 0) {
+      return { isFullyBooked: false, reason: 'Available' };
+    }
+
+    let totalReservedMinutes = 0;
+    reservations.forEach(res => {
+      const durationHours = parseFloat(res.duration);
+      totalReservedMinutes += durationHours * 60;
+    });
+
+    const occupancyRate = (totalReservedMinutes / totalMinutes) * 100;
+    
+    if (occupancyRate >= 90) {
+      return { isFullyBooked: true, reason: 'Fully Booked' };
+    }
+
+    return { isFullyBooked: false, reason: 'Available' };
+
+  } catch (error) {
+    console.error('Error checking table availability:', error);
+    return { isFullyBooked: false, reason: 'Available' };
+  }
+};
 const preloadUnavailableDates = async (tableId) => {
   const unavailableDatesList = [];
   const today = new Date();
@@ -182,13 +244,92 @@ const preloadUnavailableDates = async (tableId) => {
     [tableId]: unavailableDatesList
   }));
 };
-  const getTodayDate = () => {
+const getTableStatus = async (tableId, info) => {
+  // 1. ✅ ALWAYS check the latest status from database first
+  try {
+    const { data: latestInfo, error } = await supabase
+      .from('billiard_table_info')
+      .select('status')
+      .eq('table_id', tableId)
+      .single();
+    
+    if (error) {
+      console.error('Error fetching table status:', error);
+    }
+    
+    // Use latest status from database if available
+    const currentStatus = latestInfo?.status || info.status;
+    
+    // Check maintenance/unavailable status
+    if (currentStatus === 'Maintenance' || currentStatus === 'Unavailable') {
+      return {
+        status: currentStatus,
+        isSelectable: false,
+        displayText: currentStatus.toUpperCase()
+      };
+    }
+  } catch (err) {
+    console.error('Error checking table status:', err);
+  }
+
+  // 2. Check if there are ANY available time slots for today
+  const today = getTodayDate();
+  const todayTimes = await getAvailableTimes(tableId, today);
+  
+  // Count how many available time slots exist
+  const availableSlots = todayTimes.filter(t => t.available && !t.createsGap);
+  
+  // If NO available slots at all for today, check future availability
+  if (availableSlots.length === 0) {
+    let hasAnyAvailability = false;
+    const checkDate = new Date();
+    
+    for (let i = 1; i <= 7; i++) {
+      checkDate.setDate(checkDate.getDate() + 1);
+      const year = checkDate.getFullYear();
+      const month = String(checkDate.getMonth() + 1).padStart(2, '0');
+      const day = String(checkDate.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
+      
+      const futureTimes = await getAvailableTimes(tableId, dateString);
+      const futureAvailable = futureTimes.filter(t => t.available && !t.createsGap);
+      
+      if (futureAvailable.length > 0) {
+        hasAnyAvailability = true;
+        break;
+      }
+    }
+    
+    if (!hasAnyAvailability) {
+      return {
+        status: 'Fully Booked',
+        isSelectable: false,
+        displayText: 'FULLY BOOKED'
+      };
+    }
+    
+    // Has availability in future days
+    return {
+      status: 'Available',
+      isSelectable: true,
+      displayText: 'Available'
+    };
+  }
+
+  // 3. Has available slots - mark as available
+  return {
+    status: 'Available',
+    isSelectable: true,
+    displayText: 'AVAILABLE'
+  };
+};
+const getTodayDate = () => {
     const today = new Date();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-  };
+};
 const isDateClosed = (date) => {
   if (!date) return false;
   
@@ -204,7 +345,6 @@ const isDateClosed = (date) => {
   const closedDays = timeDates.filter(td => td.CloseDay);
   return closedDays.some(cd => cd.CloseDay === dateString);
 };
-
 const getDayNameFromDate = (dateString) => {
   if (!dateString) return null;
   
@@ -215,7 +355,6 @@ const getDayNameFromDate = (dateString) => {
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   return days[date.getDay()];
 };
-
 const isTimeInPast = (selectedTime, date) => {
   if (!date) return false;
   
@@ -238,7 +377,7 @@ const isTimeInPast = (selectedTime, date) => {
   
   return false;
 };
- const getMaxAvailableDuration = async (tableId, date, startTime) => {
+const getMaxAvailableDuration = async (tableId, date, startTime) => {
   if (!date || !startTime) return 0;
 
   const dayName = getDayNameFromDate(date);
@@ -516,9 +655,26 @@ const getAvailableTimes = async (tableId, date) => {
   
   return results;
 };
-  useEffect(() => {
+const loadTableStatuses = async () => {
+  const statuses = {};
+  
+  for (const table of tables) {
+    const info = tableInfos.find(i => i.table_id === table.table_id);
+    if (info) {
+      statuses[table.table_id] = await getTableStatus(table.table_id, info);
+    }
+  }
+  
+  setTableStatuses(statuses);
+};
+useEffect(() => {
     fetchData();
   }, []);
+useEffect(() => {
+  if (tables.length > 0 && tableInfos.length > 0 && timeDates.length > 0) {
+    loadTableStatuses();
+  }
+}, [tables, tableInfos, timeDates]);
 
 const fetchData = async () => {
   try {
@@ -566,10 +722,7 @@ const fetchData = async () => {
     setTableInfos(infosData || []);
     setDurations(durationsData || []);
     setTimeDates(timeDatesData || []);
-    console.log('📅 TimeDate Data:', timeDatesData);
-    console.log('📅 Schedules (no CloseDay):', timeDatesData.filter(td => !td.CloseDay));
-    console.log('📅 Active Schedules:', timeDatesData.filter(td => !td.CloseDay && td.Actions === 'Active'));
-    setTypes(typesData || []); // ADD THIS
+    setTypes(typesData || []);
     
   } catch (error) {
     console.error('Error fetching data:', error);
@@ -578,21 +731,23 @@ const fetchData = async () => {
   }
 };
 
-
-
 const handleTableSelect = async (table, info) => {
-  if (info.status !== 'Available') return;
+  const tableStatus = tableStatuses[table.table_id];
+  
+  if (!tableStatus || !tableStatus.isSelectable) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Table Not Available',
+      text: `This table is currently ${tableStatus?.status || 'unavailable'}`,
+    });
+    return;
+  }
 
   const isSelected = selectedTables.some(t => t.table_id === table.table_id);
   
   if (isSelected) {
     setSelectedTables(selectedTables.filter(t => t.table_id !== table.table_id));
     setTableFormData(prev => {
-      const newData = { ...prev };
-      delete newData[table.table_id];
-      return newData;
-    });
-    setUnavailableDates(prev => {
       const newData = { ...prev };
       delete newData[table.table_id];
       return newData;
@@ -612,8 +767,6 @@ const handleTableSelect = async (table, info) => {
         duration: durations.length > 0 ? durations[0].id : ''
       }
     }));
-    
-    // REMOVED: Preloading - let filterDate handle it on-demand
   }
 };
 
@@ -1213,48 +1366,53 @@ filterDate={(date) => {
     gap: '25px'
   }}>
     {tables.map(table => {
-      const info = tableInfos.find(i => i.table_id === table.table_id);
-      if (!info) return null;
+  const info = tableInfos.find(i => i.table_id === table.table_id);
+  if (!info) return null;
 
-      const isSelected = selectedTables.some(t => t.table_id === table.table_id);
-      const isAvailable = info.status === 'Available';
+  const isSelected = selectedTables.some(t => t.table_id === table.table_id);
+  const tableStatus = tableStatuses[table.table_id] || { 
+    status: 'Loading...', 
+    isSelectable: false, 
+    displayText: 'LOADING...' 
+  };
+  const isAvailable = tableStatus.isSelectable;
 
       return (
-        <div
-          key={table.table_id}
-          onClick={() => handleTableSelect(table, info)}
-          style={{
-            backgroundColor: 'white',
-            border: isSelected ? '3px solid #28a745' : '2px solid #e9ecef',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            cursor: isAvailable ? 'pointer' : 'not-allowed',
-            transition: 'all 0.3s ease',
-            opacity: isAvailable ? 1 : 0.6,
-            position: 'relative',
-            boxShadow: isSelected 
-              ? '0 8px 24px rgba(40,167,69,0.3)' 
-              : '0 2px 8px rgba(0,0,0,0.08)',
-            transform: isSelected ? 'translateY(-4px)' : 'none'
-          }}
-        >
+    <div
+      key={table.table_id}
+      onClick={() => handleTableSelect(table, info)}
+      style={{
+        backgroundColor: 'white',
+        border: isSelected ? '3px solid #28a745' : '2px solid #e9ecef',
+        borderRadius: '16px',
+        overflow: 'hidden',
+        cursor: isAvailable ? 'pointer' : 'not-allowed',
+        transition: 'all 0.3s ease',
+        opacity: isAvailable ? 1 : 0.6,
+        position: 'relative',
+        boxShadow: isSelected 
+          ? '0 8px 24px rgba(40,167,69,0.3)' 
+          : '0 2px 8px rgba(0,0,0,0.08)',
+        transform: isSelected ? 'translateY(-4px)' : 'none'
+      }}
+    >
           {/* Status Badge */}
           <div style={{
-            position: 'absolute',
-            top: '12px',
-            right: '12px',
-            padding: '6px 14px',
-            borderRadius: '20px',
-            fontSize: '11px',
-            fontWeight: '700',
-            backgroundColor: isAvailable ? '#28a745' : '#dc3545',
-            color: 'white',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            zIndex: 2
-          }}>
-            {isAvailable ? 'AVAILABLE' : 'FULLY BOOKED'}
-          </div>
+        position: 'absolute',
+        top: '12px',
+        right: '12px',
+        padding: '6px 14px',
+        borderRadius: '20px',
+        fontSize: '11px',
+        fontWeight: '700',
+        backgroundColor: isAvailable ? '#28a745' : '#dc3545',
+        color: 'white',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        zIndex: 2
+      }}>
+        {tableStatus.displayText}
+      </div>
 
           {/* Table Image Container */}
         <div style={{
