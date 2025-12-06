@@ -8,9 +8,11 @@ import {
 import logo from "../logo/logo.jpg"
 
 // NAV ITEM
-const NavItem = ({ icon: Icon, label, page, currentPage, onClick, badge, permissions, onMobileClick }) => {
+const NavItem = ({ icon: Icon, label, page, currentPage, onClick, badge, permissions, onMobileClick, userRole }) => {
   const isActive = currentPage === page;
-  const canAccess = permissions?.[page] ?? false;
+  
+  // ✅ ADMIN BYPASS - Always allow access for admin
+  const canAccess = userRole?.toLowerCase() === "admin" ? true : (permissions?.[page] ?? false);
   
   // Hide if no permission
   if (!canAccess) return null;
@@ -86,23 +88,23 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
         if (userRole.toLowerCase() === "admin") {
           console.log("✅ Admin detected - Granting all permissions");
           const allPermissions = {
-            ManagerDashboard: true,
-            MarketingDashboard: true,
-            CustomerDashboard: true,
-            frontDeskDashboard: true,
-            reservation_admin: true,
-            reservation_manager: true,
-            CustomerReservation: true,
-            ReservationFrontDesk: true,
-            QRCheckInPage: true,
-            finalize: true,
-            calendar: true,
-            profile: true,
-            CancelBookings: true,
-            history: true,
-            UserManagement: true,
-            Reference: true,
-            auditTrail: true,
+            "Manager Dashboard": true,
+            "Admin Dashboard": true,
+            "Customer Dashboard": true,
+            "FrontDesk Dashboard": true,
+            "Reservation (Admin)": true,
+            "Reservation (Manager)": true,
+            "Reservation (Customer)": true,
+            "Reservation (Front Desk)": true,
+            "QR Check-In": true,
+            "Finalize Payment": true,
+            "Calendar": true,
+            "Profile": true,
+            "CancelBookings": true,
+            "History": true,
+            "User Management": true,
+            "Reference": true,
+            "Audit Trail": true,
           };
           setPermissions(allPermissions);
           return;
@@ -156,6 +158,12 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
     window.location.href = "";
   };
 
+  // ✅ Check if user is admin or has any maintenance permission
+  const showMaintenance = accountInfo?.role?.toLowerCase() === "admin" || 
+                         permissions["User Management"] || 
+                         permissions["Reference"] || 
+                         permissions["Audit Trail"];
+
   // SIDEBAR CONTENT
   const SidebarContent = () => (
     <>
@@ -206,7 +214,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="Manager Dashboard"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
         
@@ -216,7 +225,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="Admin Dashboard"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
         
@@ -226,7 +236,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="Customer Dashboard"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
         
@@ -236,7 +247,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="FrontDesk Dashboard"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
 
@@ -249,7 +261,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="Reservation (Admin)"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
 
@@ -259,7 +272,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="Reservation (Manager)"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
 
@@ -269,7 +283,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="Reservation (Customer)"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
 
@@ -279,7 +294,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="Reservation (Front Desk)"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
         
@@ -289,7 +305,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="QR Check-In"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
         
@@ -300,6 +317,7 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           currentPage={currentPage} 
           onClick={setCurrentPage} 
           permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
 
@@ -312,7 +330,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="Calendar"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
 
@@ -322,7 +341,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="Profile"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
 
@@ -332,7 +352,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="CancelBookings"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
 
@@ -342,14 +363,15 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           page="History"
           currentPage={currentPage} 
           onClick={setCurrentPage} 
-          permissions={permissions} 
+          permissions={permissions}
+          userRole={accountInfo?.role}
           onMobileClick={closeMobileMenu} 
         />
 
         <div className="my-2 border-t border-gray-200"></div>
 
-        {/* MAINTENANCE - Show dropdown only if user has ANY maintenance permission */}
-        {(permissions["User Management"] || permissions["Reference"] || permissions["Audit Trail"]) && (
+        {/* MAINTENANCE - Show dropdown if admin OR has any maintenance permission */}
+        {showMaintenance && (
           <div>
             <button
               onClick={() => setMaintenanceOpen(!maintenanceOpen)}
@@ -371,7 +393,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
                   page="User Management"
                   currentPage={currentPage} 
                   onClick={setCurrentPage} 
-                  permissions={permissions} 
+                  permissions={permissions}
+                  userRole={accountInfo?.role}
                   onMobileClick={closeMobileMenu} 
                 />
                 
@@ -381,7 +404,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
                   page="Reference"
                   currentPage={currentPage} 
                   onClick={setCurrentPage} 
-                  permissions={permissions} 
+                  permissions={permissions}
+                  userRole={accountInfo?.role}
                   onMobileClick={closeMobileMenu} 
                 />
                 
@@ -391,7 +415,8 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
                   page="Audit Trail"
                   currentPage={currentPage} 
                   onClick={setCurrentPage} 
-                  permissions={permissions} 
+                  permissions={permissions}
+                  userRole={accountInfo?.role}
                   onMobileClick={closeMobileMenu} 
                 />
               </div>
