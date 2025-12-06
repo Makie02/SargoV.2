@@ -6,10 +6,13 @@ import {
   Search, ChevronDown, User, Users, Shield, ClipboardList, QrCode, Menu, X, XCircle, TrendingUp
 } from "lucide-react";
 import logo from "../logo/logo.jpg"
+
 // NAV ITEM
 const NavItem = ({ icon: Icon, label, page, currentPage, onClick, badge, permissions, onMobileClick }) => {
   const isActive = currentPage === page;
-  const canAccess = permissions?.[page] ?? true;
+  const canAccess = permissions?.[page] ?? false;
+  
+  // Hide if no permission
   if (!canAccess) return null;
 
   return (
@@ -45,6 +48,7 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
   const toggleDesktop = () => setIsDesktopOpen(!isDesktopOpen);
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
+  // Fetch Account Info
   useEffect(() => {
     const sessionData = localStorage.getItem("userSession");
     if (!sessionData) return;
@@ -61,21 +65,89 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
       if (!error) setAccountInfo(data);
     };
     fetchAccountInfo();
+  }, []);
 
+  // Fetch Permissions from Supabase
+  useEffect(() => {
     const fetchPermissions = async () => {
-      const { data: rolesData, error: rolesError } = await supabase.from("UserRole").select("*");
-      if (rolesError) return;
+      const sessionData = localStorage.getItem("userSession");
+      if (!sessionData) return;
 
-      const matchedRole = rolesData.find(r => r.role?.toLowerCase() === session.role?.toLowerCase());
-      if (!matchedRole) return;
+      try {
+        const session = JSON.parse(sessionData);
+        const userRole = session.role;
 
-      const { data: permsData, error: permsError } = await supabase
-        .from("Role_Permission")
-        .select("*")
-        .eq("role_id", matchedRole.role_id);
+        if (!userRole) {
+          console.warn("⚠️ No role found in session");
+          return;
+        }
 
-      if (!permsError) setPermissions(permsData.reduce((acc, p) => ({ ...acc, [p.page]: true }), {}));
+        // ✅ ADMIN BYPASS - Grant all permissions
+        if (userRole.toLowerCase() === "admin") {
+          console.log("✅ Admin detected - Granting all permissions");
+          const allPermissions = {
+            ManagerDashboard: true,
+            MarketingDashboard: true,
+            CustomerDashboard: true,
+            frontDeskDashboard: true,
+            reservation_admin: true,
+            reservation_manager: true,
+            CustomerReservation: true,
+            ReservationFrontDesk: true,
+            QRCheckInPage: true,
+            finalize: true,
+            calendar: true,
+            profile: true,
+            CancelBookings: true,
+            history: true,
+            UserManagement: true,
+            Reference: true,
+            auditTrail: true,
+          };
+          setPermissions(allPermissions);
+          return;
+        }
+
+        // Step 1: Get role_id from UserRole table
+        const { data: roleData, error: roleError } = await supabase
+          .from("UserRole")
+          .select("role_id, role")
+          .ilike("role", userRole)
+          .maybeSingle();
+
+        if (roleError || !roleData) {
+          console.error("❌ Error fetching role:", roleError);
+          return;
+        }
+
+        const roleId = roleData.role_id;
+        console.log("✅ Found role_id:", roleId, "for role:", roleData.role);
+
+        // Step 2: Get permissions from Role_Permission table
+        const { data: permsData, error: permsError } = await supabase
+          .from("Role_Permission")
+          .select("page, has_access")
+          .eq("role_id", roleId);
+
+        if (permsError || !permsData) {
+          console.error("❌ Error fetching permissions:", permsError);
+          return;
+        }
+
+        // Step 3: Build permissions object
+        const permissionsObj = {};
+        permsData.forEach(({ page, has_access }) => {
+          permissionsObj[page] = has_access === true;
+        });
+
+        console.log("✅ Permissions loaded:", permissionsObj);
+        setPermissions(permissionsObj);
+
+      } catch (error) {
+        console.error("❌ Error in fetchPermissions:", error);
+      }
     };
+
     fetchPermissions();
   }, []);
 
@@ -91,14 +163,13 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
       <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-white">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w- h-8 rounded-xl overflow-hidden shadow-lg">
+            <div className="w-8 h-8 rounded-xl overflow-hidden shadow-lg">
               <img
                 src={logo}
                 alt="Logo"
                 className="w-full h-full object-cover"
               />
             </div>
-
             <span className="font-bold text-gray-900 text-lg">Elev8</span>
           </div>
           <button
@@ -125,93 +196,160 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
         </div>
       </div>
 
-      {/* NAV ITEMS */}
+      {/* NAV ITEMS - PERMISSION BASED */}
       <nav className="flex-1 overflow-y-auto py-2">
 
-        {/* DASHBOARDS - Role Based */}
-     
-
-        {userRole === "manager" && (
-          <>
-            <NavItem icon={LayoutDashboard} label="Manager Dashboard" page="ManagerDashboard"
-              currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-            <NavItem icon={TrendingUp} label="Revenue Dashboard" page="MarketingDashboard"
-              currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-          </>
-        )}
-
-        {userRole === "customer" && (
-          <NavItem icon={LayoutDashboard} label="Dashboard" page="CustomerDashboard"
-            currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-        )}
-
-        {userRole === "frontdesk" && (
-          <NavItem icon={LayoutDashboard} label="Dashboard" page="frontDeskDashboard"
-            currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-        )}
-
-        {userRole === "admin" && (
-          <>
-
-            <NavItem icon={LayoutDashboard} label="Manager Dashboard" page="ManagerDashboard"
-              currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-            <NavItem icon={TrendingUp} label="Revenue Dashboard" page="MarketingDashboard"
-              currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-            <NavItem icon={LayoutDashboard} label="Customer Dashboard" page="CustomerDashboard"
-              currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-            <NavItem icon={LayoutDashboard} label="FrontDesk Dashboard" page="frontDeskDashboard"
-              currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-          </>
-        )}
+        {/* DASHBOARDS */}
+        <NavItem 
+          icon={LayoutDashboard} 
+          label="Manager Dashboard" 
+          page="Manager Dashboard"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
+        
+        <NavItem 
+          icon={LayoutDashboard} 
+          label="Admin Dashboard" 
+          page="Admin Dashboard"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
+        
+        <NavItem 
+          icon={LayoutDashboard} 
+          label="Customer Dashboard" 
+          page="Customer Dashboard"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
+        
+        <NavItem 
+          icon={LayoutDashboard} 
+          label="FrontDesk Dashboard" 
+          page="FrontDesk Dashboard"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
 
         <div className="my-2 border-t border-gray-200"></div>
 
-        {/* RESERVATIONS - Role Based */}
-        {(userRole === "admin" || userRole === "admin") && (
-          <NavItem icon={Shield} label="Reservations (Admin)" page="reservation_admin"
-            currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-        )}
+        {/* RESERVATIONS */}
+        <NavItem 
+          icon={Shield} 
+          label="Reservations (Admin)" 
+          page="Reservation (Admin)"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
 
-        {(userRole === "manager" || userRole === "admin") && (
-          <NavItem icon={Users} label="Reservations (Manager)" page="reservation_manager"
-            currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-        )}
+        <NavItem 
+          icon={Users} 
+          label="Reservations (Manager)" 
+          page="Reservation (Manager)"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
 
-        {(userRole === "customer" || userRole === "admin") && (
-          <NavItem icon={ClipboardList} label="My Reservations" page="CustomerReservation"
-            currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-        )}
+        <NavItem 
+          icon={ClipboardList} 
+          label="My Reservations" 
+          page="Reservation (Customer)"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
 
-        {(userRole === "frontdesk" || userRole === "admin") && (
-          <>
-            <NavItem icon={User} label="Reservations" page="ReservationFrontDesk"
-              currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-            <NavItem icon={QrCode} label="QR Check-In" page="QRCheckInPage"
-              currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-            <NavItem icon={QrCode} label="Finalize Payment" page="finalize"
-              currentPage={currentPage} onClick={setCurrentPage}  onMobileClick={closeMobileMenu} />
-          </>
-        )}
+        <NavItem 
+          icon={User} 
+          label="Reservations (Front Desk)" 
+          page="Reservation (Front Desk)"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
+        
+        <NavItem 
+          icon={QrCode} 
+          label="QR Check-In" 
+          page="QR Check-In"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
+        
+        <NavItem 
+          icon={QrCode} 
+          label="Finalize Payment" 
+          page="Finalize Payment"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions}
+          onMobileClick={closeMobileMenu} 
+        />
 
         <div className="my-2 border-t border-gray-200"></div>
 
         {/* COMMON PAGES */}
-        <NavItem icon={Calendar} label="Calendar" page="calendar"
-          currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
+        <NavItem 
+          icon={Calendar} 
+          label="Calendar" 
+          page="Calendar"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
 
-        <NavItem icon={User} label="Profile" page="profile"
-          currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
+        <NavItem 
+          icon={User} 
+          label="Profile" 
+          page="Profile"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
 
-        <NavItem icon={XCircle} label="Cancel Bookings" page="CancelBookings"
-          currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
+        <NavItem 
+          icon={XCircle} 
+          label="Cancel Bookings" 
+          page="CancelBookings"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
 
-        <NavItem icon={Clock} label="History" page="history"
-          currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
+        <NavItem 
+          icon={Clock} 
+          label="History" 
+          page="History"
+          currentPage={currentPage} 
+          onClick={setCurrentPage} 
+          permissions={permissions} 
+          onMobileClick={closeMobileMenu} 
+        />
 
         <div className="my-2 border-t border-gray-200"></div>
 
-        {/* MAINTENANCE (Admin/admin only) */}
-        {(userRole === "admin" || userRole === "admin") && (
+        {/* MAINTENANCE - Show dropdown only if user has ANY maintenance permission */}
+        {(permissions["User Management"] || permissions["Reference"] || permissions["Audit Trail"]) && (
           <div>
             <button
               onClick={() => setMaintenanceOpen(!maintenanceOpen)}
@@ -227,31 +365,40 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
 
             {maintenanceOpen && (
               <div className="bg-gray-50 border-l-2 border-purple-200">
-                <NavItem icon={Settings} label="User Management" page="UserManagement"
-                  currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-                <NavItem icon={CheckSquare} label="Reference" page="Reference"
-                  currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
-                <NavItem icon={FileText} label="Audit Trail" page="auditTrail"
-                  currentPage={currentPage} onClick={setCurrentPage} permissions={permissions} onMobileClick={closeMobileMenu} />
+                <NavItem 
+                  icon={Settings} 
+                  label="User Management" 
+                  page="User Management"
+                  currentPage={currentPage} 
+                  onClick={setCurrentPage} 
+                  permissions={permissions} 
+                  onMobileClick={closeMobileMenu} 
+                />
+                
+                <NavItem 
+                  icon={CheckSquare} 
+                  label="Reference" 
+                  page="Reference"
+                  currentPage={currentPage} 
+                  onClick={setCurrentPage} 
+                  permissions={permissions} 
+                  onMobileClick={closeMobileMenu} 
+                />
+                
+                <NavItem 
+                  icon={FileText} 
+                  label="Audit Trail" 
+                  page="Audit Trail"
+                  currentPage={currentPage} 
+                  onClick={setCurrentPage} 
+                  permissions={permissions} 
+                  onMobileClick={closeMobileMenu} 
+                />
               </div>
             )}
           </div>
         )}
       </nav>
-            
-      {/* SUPPORT */}
-      <div className="border-t border-gray-200 p-2">
-        <NavItem
-          icon={HelpCircle}
-          label="Support"
-          page="Support"
-          currentPage={currentPage}
-          onClick={setCurrentPage}
-          permissions={permissions}
-          badge="Online"
-          onMobileClick={closeMobileMenu}
-        />
-      </div>
 
       {/* FOOTER - Profile & Logout */}
       <div className="border-t border-gray-200 p-4 bg-gray-50">
@@ -293,7 +440,7 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
     </>
   );
 
-return (
+  return (
     <>
       {/* Mobile Menu toggle */}
       <button
