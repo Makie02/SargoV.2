@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
 import { ChevronDown, Bell } from "lucide-react";
@@ -28,6 +27,7 @@ import ForgotPassword from "./components/ForgotPassword";
 import MarketingDashboard from "./dashboard/MarketingDashboard";
 import ResetPassword from "./components/ResetPassword";
 import CancelBookings from "./components/CancelBookings";
+
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState(null);
@@ -38,187 +38,6 @@ function App() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [isDesktopOpen, setIsDesktopOpen] = useState(true);
 
-
-
-
-
-  const [permissions, setPermissions] = useState({});
-  const [noPermissionsData, setNoPermissionsData] = useState(false);
-
-  // Fetch role permissions
-useEffect(() => {
-  const loadSession = async () => {
-    const sessionData = localStorage.getItem("userSession");
-    if (!sessionData) return;
-
-    try {
-      const session = JSON.parse(sessionData);
-      setUserRole(session.role);
-      setIsLoggedIn(true);
-
-      const savedPage = localStorage.getItem("currentPage");
-
-      // ✅ Updated default pages
-      const defaultPages = {
-        customer: 'Customer Dashboard',
-        frontdesk: 'FrontDesk Dashboard',
-        manager: 'Manager Dashboard',
-        admin: 'Admin Dashboard',
-        superadmin: 'Admin Dashboard'
-      };
-
-      if (savedPage) {
-        setCurrentPage(savedPage);
-      } else {
-        setCurrentPage(defaultPages[session.role] || 'Admin Dashboard');
-      }
-
-      const { data, error } = await supabase
-        .from("accounts")
-        .select("*")
-        .eq("email", session.email)
-        .single();
-
-      if (!error) {
-        setUserProfile({
-          name: session.full_name || session.username || "User",
-          email: data.email,
-          role: data.role,
-          profilePicture: data.ProfilePicuture || "",
-        });
-      }
-    } catch (error) {
-      console.error("Error parsing session:", error);
-      localStorage.removeItem("userSession");
-    }
-  };
-  loadSession();
-}, []);
-useEffect(() => {
-  const fetchRolePermissions = async () => {
-    const sessionData = localStorage.getItem("userSession");
-    if (!sessionData) return;
-
-    try {
-      const session = JSON.parse(sessionData);
-      const userRole = session.role;
-
-      if (!userRole) {
-        console.warn("⚠️ No role found in session");
-        setNoPermissionsData(true);
-        return;
-      }
-
-      // ✅ ADMIN BYPASS - Grant all permissions
-      if (userRole.toLowerCase() === "admin") {
-        console.log("✅ Admin detected - Full access granted");
-        const allPermissions = {
-          "Admin Dashboard": true,
-          "Manager Dashboard": true,
-          "Customer Dashboard": true,
-          "FrontDesk Dashboard": true,
-          "Reservation (Admin)": true,
-          "Reservation (Manager)": true,
-          "Reservation (Customer)": true,
-          "Reservation (Front Desk)": true,
-          "QR Check-In": true,
-          "Finalize Payment": true,
-          "Calendar": true,
-          "History": true,
-          "User Management": true,
-          "Reference": true,
-          "Audit Trail": true,
-          "profile": true,
-          "CancelBookings": true,
-        };
-        setPermissions(allPermissions);
-        setNoPermissionsData(false);
-        return;
-      }
-
-      // Fetch from database for other roles
-      const { data: roleData, error: roleError } = await supabase
-        .from("UserRole")
-        .select("role_id, role")
-        .ilike("role", userRole)
-        .maybeSingle();
-
-      if (roleError || !roleData) {
-        console.error("❌ Error fetching role:", roleError);
-        setNoPermissionsData(true);
-        return;
-      }
-
-      const roleId = roleData.role_id;
-      console.log("✅ Found role_id:", roleId, "for role:", roleData.role);
-
-      const { data: permsData, error: permsError } = await supabase
-        .from("Role_Permission")
-        .select("page, has_access")
-        .eq("role_id", roleId);
-
-      if (permsError) {
-        console.error("❌ Error fetching permissions:", permsError);
-        setNoPermissionsData(true);
-        return;
-      }
-
-      if (!permsData || permsData.length === 0) {
-        console.warn("⚠️ No permissions found for role_id:", roleId);
-        
-        // Default permissions
-        const defaultPerms = {
-          frontdesk: {
-            "FrontDesk Dashboard": true,
-            "Reservation (Front Desk)": true,
-            "QR Check-In": true,
-            "Finalize Payment": true,
-            "Calendar": true,
-            "profile": true,
-            "History": true,
-          },
-          customer: {
-            "Customer Dashboard": true,
-            "Reservation (Customer)": true,
-            "Calendar": true,
-            "profile": true,
-            "History": true,
-            "CancelBookings": true,
-          },
-          manager: {
-            "Manager Dashboard": true,
-            "Reservation (Manager)": true,
-            "Calendar": true,
-            "profile": true,
-            "History": true,
-          }
-        };
-        
-        setPermissions(defaultPerms[userRole.toLowerCase()] || {});
-        setNoPermissionsData(false);
-        return;
-      }
-
-      const permissionsObj = {};
-      permsData.forEach(({ page, has_access }) => {
-        permissionsObj[page] = has_access === true;
-      });
-
-      console.log("✅ Permissions loaded:", permissionsObj);
-      setPermissions(permissionsObj);
-      setNoPermissionsData(false);
-
-    } catch (error) {
-      console.error("❌ Error in fetchRolePermissions:", error);
-      setNoPermissionsData(true);
-    }
-  };
-
-  if (isLoggedIn) {
-    fetchRolePermissions();
-  }
-}, [isLoggedIn]);
-
   const [userProfile, setUserProfile] = useState({
     name: "",
     email: "",
@@ -228,6 +47,7 @@ useEffect(() => {
 
   const [notifications, setNotifications] = useState([]);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [permissions, setPermissions] = useState({}); // ✅ ADDED: Store user permissions
 
   // Helper function to format time ago
   const getTimeAgo = (timestamp) => {
@@ -286,8 +106,7 @@ useEffect(() => {
     if (currentPage) localStorage.setItem("currentPage", currentPage);
   }, [currentPage]);
 
-  // Load session & profile
-  // Load session & profile
+  // ✅ FIXED: Load session, profile & permissions
   useEffect(() => {
     const loadSession = async () => {
       const sessionData = localStorage.getItem("userSession");
@@ -298,25 +117,7 @@ useEffect(() => {
         setUserRole(session.role);
         setIsLoggedIn(true);
 
-        // ✅ FIXED: Prioritize saved page over default pages
-        const savedPage = localStorage.getItem("currentPage");
-
-        // Default pages for first login only
-        const defaultPages = {
-          customer: 'CustomerDashboard',
-          frontdesk: 'frontDeskDashboard',
-          manager: 'ManagerDashboard',
-          admin: 'dashboard',
-          superadmin: 'dashboard'
-        };
-
-        // Use saved page if exists, otherwise use default for role
-        if (savedPage) {
-          setCurrentPage(savedPage);
-        } else {
-          setCurrentPage(defaultPages[session.role] || 'dashboard');
-        }
-
+        // Fetch user account data
         const { data, error } = await supabase
           .from("accounts")
           .select("*")
@@ -331,6 +132,56 @@ useEffect(() => {
             profilePicture: data.ProfilePicuture || "",
           });
         }
+
+        // ✅ ADDED: Fetch permissions
+        const { data: rolesData, error: rolesError } = await supabase
+          .from("UserRole")
+          .select("*")
+          .ilike("role", session.role);
+
+        if (!rolesError && rolesData?.[0]) {
+          const { data: permsData, error: permsError } = await supabase
+            .from("Role_Permission")
+            .select("page, has_access")
+            .eq("role_id", rolesData[0].role_id);
+
+          if (!permsError) {
+            const permsObj = {};
+            permsData?.forEach(perm => {
+              if (perm.has_access) {
+                permsObj[perm.page] = true;
+              }
+            });
+            setPermissions(permsObj);
+
+            // ✅ Set default page based on permissions
+            const savedPage = localStorage.getItem("currentPage");
+            
+            // Map permission names to page codes
+            const permissionToPageMap = {
+              'Manager Dashboard': 'ManagerDashboard',
+              'Customer Dashboard': 'CustomerDashboard',
+              'FrontDesk Dashboard': 'frontDeskDashboard',
+              'Revenue Dashboard': 'MarketingDashboard',
+            };
+
+            // Find first accessible dashboard
+            let defaultPage = 'dashboard';
+            for (const [permName, pageCode] of Object.entries(permissionToPageMap)) {
+              if (permsObj[permName]) {
+                defaultPage = pageCode;
+                break;
+              }
+            }
+
+            // Use saved page if exists and has access, otherwise use default
+            if (savedPage && hasPageAccess(savedPage, permsObj)) {
+              setCurrentPage(savedPage);
+            } else {
+              setCurrentPage(defaultPage);
+            }
+          }
+        }
       } catch (error) {
         console.error("Error parsing session:", error);
         localStorage.removeItem("userSession");
@@ -338,11 +189,42 @@ useEffect(() => {
     };
     loadSession();
   }, []);
+
+  // ✅ FIXED: Helper function to check page access
+  const hasPageAccess = (page, perms = permissions) => {
+    // Map page codes to permission names
+    const pagePermissionMap = {
+      'ManagerDashboard': 'Manager Dashboard',
+      'MarketingDashboard': 'Revenue Dashboard',
+      'CustomerDashboard': 'Customer Dashboard',
+      'frontDeskDashboard': 'FrontDesk Dashboard',
+      'CustomerReservation': 'Reservation (Customer)',
+      'ReservationFrontDesk': 'Reservation (Front Desk)',
+      'QRCheckInPage': 'QR Check-In',
+      'finalize': 'Finalize Payment',
+      'calendar': 'Calendar',
+      'profile': 'Profile',
+      'CancelBookings': 'Cancel Bookings',
+      'history': 'History',
+      'UserManagement': 'User Management',
+      'Reference': 'Reference',
+      'auditTrail': 'Audit Trail',
+      'Payment': 'Payment',
+    };
+
+    const permissionName = pagePermissionMap[page];
+    
+    // If no permission name mapping, allow access (backwards compatibility)
+    if (!permissionName) return true;
+    
+    // Check if user has permission
+    return perms[permissionName] === true;
+  };
+
   // Notifications useEffect
   useEffect(() => {
-    if (!userProfile.email) return; // Wait for user profile to load
+    if (!userProfile.email) return;
 
-    // Initial fetch
     const fetchNotifications = async () => {
       const sessionData = localStorage.getItem("userSession");
       if (!sessionData) return;
@@ -350,13 +232,11 @@ useEffect(() => {
       const session = JSON.parse(sessionData);
       const currentAccountId = session.account_id || session.id;
 
-      // Build query based on role
       let query = supabase
         .from("transaction_history")
         .select("*")
         .eq("Notification", false);
 
-      // If not admin/superadmin, filter by account_id
       if (userRole !== 'admin' && userRole !== 'superadmin') {
         query = query.eq("account_id", currentAccountId);
       }
@@ -380,7 +260,6 @@ useEffect(() => {
 
     fetchNotifications();
 
-    // Realtime listener
     const channel = supabase
       .channel("transaction_notifications")
       .on(
@@ -389,13 +268,11 @@ useEffect(() => {
         (payload) => {
           const newTx = payload.new;
           if (!newTx.Notification) {
-            // Get current user's account_id
             const sessionData = localStorage.getItem("userSession");
             if (sessionData) {
               const session = JSON.parse(sessionData);
               const currentAccountId = session.account_id || session.id;
 
-              // Check if should show notification based on role
               const shouldShow =
                 userRole === 'admin' ||
                 userRole === 'superadmin' ||
@@ -426,7 +303,6 @@ useEffect(() => {
     };
   }, [userRole, userProfile.email]);
 
-  // Handle notification click - mark as read
   const handleNotificationClick = async (notificationId) => {
     try {
       const { error } = await supabase
@@ -435,17 +311,13 @@ useEffect(() => {
         .eq("id", notificationId);
 
       if (!error) {
-        // Remove notification from state
         setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
-      } else {
-        console.error("Error marking notification as read:", error);
       }
     } catch (error) {
       console.error("Error updating notification:", error);
     }
   };
 
-  // Mark all notifications as read
   const handleMarkAllAsRead = async () => {
     try {
       const notificationIds = notifications.map(n => n.id);
@@ -457,93 +329,55 @@ useEffect(() => {
 
       if (!error) {
         setNotifications([]);
-      } else {
-        console.error("Error marking all as read:", error);
       }
     } catch (error) {
       console.error("Error updating notifications:", error);
     }
   };
-const handleLoginSuccess = async (sessionData) => {
-  setUserRole(sessionData.role);
-  setIsLoggedIn(true);
 
-  setTimeout(() => {
-    switch (sessionData.role) {
-      case 'customer':
-        setCurrentPage('Customer Dashboard');
-        break;
-      case 'frontdesk':
-        setCurrentPage('FrontDesk Dashboard');
-        break;
-      case 'manager':
-        setCurrentPage('Manager Dashboard');
-        break;
-      case 'admin':
-      case 'superadmin':
-        setCurrentPage('Admin Dashboard');
-        break;
-      default:
-        setCurrentPage('Admin Dashboard');
-    }
-  }, 0);
-};
+  const handleLoginSuccess = async (sessionData) => {
+    setUserRole(sessionData.role);
+    setIsLoggedIn(true);
+
+    setTimeout(() => {
+      switch (sessionData.role) {
+        case 'customer':
+          setCurrentPage('CustomerDashboard');
+          break;
+        case 'frontdesk':
+          setCurrentPage('frontDeskDashboard');
+          break;
+        case 'manager':
+          setCurrentPage('ManagerDashboard');
+          break;
+        case 'admin':
+        case 'superadmin':
+          setCurrentPage('ManagerDashboard');
+          break;
+        default:
+          setCurrentPage('dashboard');
+      }
+    }, 0);
+  };
+
   const handleLogout = () => {
     setIsLoggedIn(false);
     setUserRole(null);
     setUserProfile({ name: "", email: "", role: "", profilePicture: "" });
+    setPermissions({});
     setCurrentPage("dashboard");
     localStorage.removeItem("userSession");
+    localStorage.removeItem("currentPage");
   };
-
-  const adminPages = ["approvals", "auditTrail", "maintenance", "userManagement", "Reference", "dashboard"];
-  const customerPages = ["CustomerDashboard", "CustomerReservation", "Payment"];
-  const frontdeskPages = ["frontDeskDashboard", "ReservationFrontDesk", "QRCheckInPage"];
-  const managerPages = ["ManagerDashboard"];
-const hasAccess = (page) => {
-  // ✅ ADMIN has access to everything
-  if (userRole === "admin") return true;
-
-  // Check permissions from database
-  if (permissions[page] !== undefined) {
-    return permissions[page] === true;
-  }
-
-  // Common pages accessible by all (fallback)
-  const commonPages = ["Calendar", "profile", "History", "CancelBookings"];
-  return commonPages.includes(page);
-};
-
 
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [adminNotificationOpen, setAdminNotificationOpen] = useState(false);
 
-  const NotFoundPage = () => (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50">
-      <div className="text-center">
-        <h1 className="text-6xl font-bold text-gray-300 mb-4">403</h1>
-        <h2 className="text-2xl font-semibold text-gray-700 mb-2">Access Denied</h2>
-        <p className="text-gray-500 mb-6">You don't have permission to access this page.</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          Refresh Page
-        </button>
-      </div>
-    </div>
-  );
-  // Show NotFoundPage if no permissions data
-
-  // Admin Notifications from Reservation Table
   // Admin Notifications from Reservation Table
   useEffect(() => {
-    // Only for admin and superadmin roles
     if (userRole !== 'admin' && userRole !== 'superadmin') return;
 
-    // Initial fetch
     const fetchAdminNotifications = async () => {
-      // Get all reservations where Notification is false or null
       const { data, error } = await supabase
         .from("reservation")
         .select("*")
@@ -551,7 +385,6 @@ const hasAccess = (page) => {
         .order("created_at", { ascending: false });
 
       if (!error && data) {
-        console.log("Fetched admin notifications:", data); // Debug log
         setAdminNotifications(
           data.map((res) => ({
             id: res.id,
@@ -567,14 +400,11 @@ const hasAccess = (page) => {
             timestamp: res.created_at,
           }))
         );
-      } else if (error) {
-        console.error("Error fetching admin notifications:", error);
       }
     };
 
     fetchAdminNotifications();
 
-    // Realtime listener for new reservations
     const channel = supabase
       .channel("admin_reservation_notifications")
       .on(
@@ -582,9 +412,6 @@ const hasAccess = (page) => {
         { event: "INSERT", schema: "public", table: "reservation" },
         (payload) => {
           const newRes = payload.new;
-          console.log("New reservation inserted:", newRes); // Debug log
-
-          // Check if notification should be shown (null or false)
           if (newRes.Notification === null || newRes.Notification === false) {
             setAdminNotifications((prev) => [
               {
@@ -610,18 +437,12 @@ const hasAccess = (page) => {
         { event: "UPDATE", schema: "public", table: "reservation" },
         (payload) => {
           const updatedRes = payload.new;
-          const oldRes = payload.old;
 
-          console.log("Reservation updated:", updatedRes); // Debug log
-
-          // If Notification changed from true to false/null, or status changed
           if (updatedRes.Notification === null || updatedRes.Notification === false) {
             setAdminNotifications((prev) => {
-              // Check if already exists
               const exists = prev.find(n => n.id === updatedRes.id);
 
               if (!exists) {
-                // Add new notification if doesn't exist
                 return [
                   {
                     id: updatedRes.id,
@@ -639,7 +460,6 @@ const hasAccess = (page) => {
                   ...prev,
                 ];
               } else {
-                // Update existing notification
                 return prev.map(n =>
                   n.id === updatedRes.id
                     ? {
@@ -655,7 +475,6 @@ const hasAccess = (page) => {
               }
             });
           } else if (updatedRes.Notification === true) {
-            // Remove notification if marked as read
             setAdminNotifications((prev) => prev.filter(n => n.id !== updatedRes.id));
           }
         }
@@ -665,9 +484,8 @@ const hasAccess = (page) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userRole,]);
+  }, [userRole]);
 
-  // Handle admin notification click - mark as read
   const handleAdminNotificationClick = async (notificationId) => {
     try {
       const { error } = await supabase
@@ -677,15 +495,12 @@ const hasAccess = (page) => {
 
       if (!error) {
         setAdminNotifications((prev) => prev.filter((n) => n.id !== notificationId));
-      } else {
-        console.error("Error marking admin notification as read:", error);
       }
     } catch (error) {
       console.error("Error updating admin notification:", error);
     }
   };
 
-  // Mark all admin notifications as read
   const handleMarkAllAdminAsRead = async () => {
     try {
       const notificationIds = adminNotifications.map(n => n.id);
@@ -697,68 +512,54 @@ const hasAccess = (page) => {
 
       if (!error) {
         setAdminNotifications([]);
-      } else {
-        console.error("Error marking all admin notifications as read:", error);
       }
     } catch (error) {
       console.error("Error updating admin notifications:", error);
     }
   };
-const renderPage = () => {
-  // Check access before rendering
-  if (!hasAccess(currentPage)) {
-    const defaultPages = {
-      customer: 'Customer Dashboard',
-      frontdesk: 'FrontDesk Dashboard',
-      manager: 'Manager Dashboard',
-      admin: 'Admin Dashboard',
-      superadmin: 'Admin Dashboard'
-    };
 
-    const defaultPage = defaultPages[userRole] || 'Admin Dashboard';
-    
-    // Redirect to default page
-    setTimeout(() => setCurrentPage(defaultPage), 0);
-    
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <p className="text-gray-600">Redirecting to your dashboard...</p>
-        </div>
-      </div>
-    );
-  }
+  // ✅ FIXED: Render page with permission check
+  const renderPage = () => {
+    // Check if user has access to current page
+    if (!hasPageAccess(currentPage)) {
+      // Find first accessible page
+      const pagePermissionMap = {
+        'Manager Dashboard': 'ManagerDashboard',
+        'Customer Dashboard': 'CustomerDashboard',
+        'FrontDesk Dashboard': 'frontDeskDashboard',
+        'Revenue Dashboard': 'MarketingDashboard',
+      };
 
-  if (isLoggedIn && noPermissionsData) {
-    return <NotFoundPage />;
-  }
+      for (const [permName, pageCode] of Object.entries(pagePermissionMap)) {
+        if (permissions[permName]) {
+          setTimeout(() => setCurrentPage(pageCode), 0);
+          return null;
+        }
+      }
+    }
 
-  const pages = {
-    // ✅ NEW - With Spaces (matches Sidebar & Database)
-    "Admin Dashboard": <Dashboard />,
-    "Manager Dashboard": <ManagerDashboard />,
-    "Customer Dashboard": <CustomerDashboard />,
-    "FrontDesk Dashboard": <FrontDeskDashboard />,
-    "Reservation (Admin)": <Reservation />,
-    "Reservation (Manager)": <Reservation />,
-    "Reservation (Customer)": <CustomerReservation />,
-    "Reservation (Front Desk)": <ReservationFrontDesk />,
-    "QR Check-In": <QRCheckInPage />,
-    "Finalize Payment": <FinalizePayment />,
-    "Calendar": <ReservationCalendar />,
-    "History": <History />,
-    "User Management": <UserManagement />,
-    "Reference": <Reference />,
-    "Audit Trail": <AuditTrail />,
-    
-    // ✅ Keep these for backward compatibility
-    "Profile": <ViewProfile />,
-    "CancelBookings": <CancelBookings />,
-    "Payment": <Payment />,
-    "ResetPassword": <ResetPassword />,
-    "homeDashboardUpload": <HomeDashboardUpload />,
-
-
+    const pages = {
+      dashboard: <Dashboard />,
+      reservation: <Reservation />,
+      history: <History />,
+      calendar: <ReservationCalendar />,
+      approvals: <Approvals />,
+      auditTrail: <AuditTrail />,
+      Reference: <Reference />,
+      frontDeskDashboard: <FrontDeskDashboard />,
+      CustomerDashboard: <CustomerDashboard />,
+      QRCheckInPage: <QRCheckInPage />,
+      ReservationFrontDesk: <ReservationFrontDesk />,
+      CustomerReservation: <CustomerReservation />,
+      Payment: <Payment />,
+      finalize: <FinalizePayment />,
+      UserManagement: <UserManagement />,
+      ManagerDashboard: <ManagerDashboard />,
+      profile: <ViewProfile />,
+      homeDashboardUpload: <HomeDashboardUpload />,
+      MarketingDashboard: <MarketingDashboard />,
+      ResetPassword: <ResetPassword />,
+      CancelBookings: <CancelBookings />,
     };
 
     return pages[currentPage] || <Dashboard />;
@@ -766,21 +567,13 @@ const renderPage = () => {
 
   const [isResetPasswordPage, setIsResetPasswordPage] = useState(false);
 
-  // ... rest of your existing state
-
-  // ✅ Check URL on mount
   useEffect(() => {
     const hash = window.location.hash;
-
-    // Check if it's a password reset link from Supabase
     if (hash.includes('type=recovery')) {
       setIsResetPasswordPage(true);
     }
   }, []);
 
-  // ... rest of your existing code
-
-  // ✅ If on reset password page, show that component
   if (isResetPasswordPage) {
     return <ResetPassword onSuccess={() => {
       setIsResetPasswordPage(false);
@@ -791,10 +584,7 @@ const renderPage = () => {
   if (!isLoggedIn) {
     return (
       <>
-        <Home
-          onLoginSuccess={handleLoginSuccess}
-        />
-
+        <Home onLoginSuccess={handleLoginSuccess} />
         <ForgotPassword
           isOpen={showForgotPassword}
           onClose={() => setShowForgotPassword(false)}
@@ -803,6 +593,7 @@ const renderPage = () => {
       </>
     );
   }
+
   return (
     <div className="flex h-screen bg-white">
       <Sidebar
@@ -835,10 +626,8 @@ const renderPage = () => {
                   )}
                 </button>
 
-                {/* Notification Dropdown */}
                 {notificationOpen && (
                   <div className="absolute right-0 mt-3 w-96 bg-white/95 backdrop-blur-xl border border-blue-100 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
-                    {/* Header */}
                     <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-4">
                       <div className="flex items-center justify-between">
                         <h3 className="text-white font-semibold text-base flex items-center gap-2">
@@ -853,7 +642,6 @@ const renderPage = () => {
                       </div>
                     </div>
 
-                    {/* Notification List */}
                     <div className="max-h-96 overflow-y-auto">
                       {notifications.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 px-4">
@@ -870,10 +658,8 @@ const renderPage = () => {
                               key={note.id}
                               onClick={() => handleNotificationClick(note.id)}
                               className="px-4 py-3.5 hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent cursor-pointer transition-all duration-200 group"
-                              style={{ animationDelay: `${index * 50}ms` }}
                             >
                               <div className="flex items-start gap-3">
-                                {/* Icon */}
                                 <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200">
                                   <span className="text-white text-sm font-bold">
                                     {note.activityType === 'extension' ? '⏱️' :
@@ -884,13 +670,11 @@ const renderPage = () => {
                                   </span>
                                 </div>
 
-                                {/* Content */}
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm text-gray-800 font-medium leading-relaxed">
                                     {note.message}
                                   </p>
 
-                                  {/* Status, Extension, Duration Display */}
                                   <div className="flex flex-wrap items-center gap-2 mt-2">
                                     {note.status && (
                                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
@@ -922,7 +706,6 @@ const renderPage = () => {
                                   </div>
                                 </div>
 
-                                {/* Dot indicator */}
                                 <div className="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full mt-2 group-hover:scale-125 transition-transform"></div>
                               </div>
                             </div>
@@ -931,7 +714,6 @@ const renderPage = () => {
                       )}
                     </div>
 
-                    {/* Footer */}
                     {notifications.length > 0 && (
                       <div className="bg-gradient-to-r from-blue-50 to-transparent px-5 py-3 border-t border-blue-100">
                         <button
@@ -963,10 +745,8 @@ const renderPage = () => {
                   )}
                 </button>
 
-                {/* Admin Notification Dropdown */}
                 {adminNotificationOpen && (
                   <div className="absolute right-0 mt-3 w-96 bg-white/95 backdrop-blur-xl border border-green-100 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
-                    {/* Header */}
                     <div className="bg-gradient-to-r from-green-500 to-green-600 px-5 py-4">
                       <div className="flex items-center justify-between">
                         <h3 className="text-white font-semibold text-base flex items-center gap-2">
@@ -981,11 +761,10 @@ const renderPage = () => {
                       </div>
                     </div>
 
-                    {/* Notification List */}
                     <div className="max-h-96 overflow-y-auto">
                       {adminNotifications.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 px-4">
-                          <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green-50 rounded-full flex items-center justify-center mb-3">
+                          <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green -50 rounded-full flex items-center justify-center mb-3">
                             <Bell size={28} className="text-green-400" />
                           </div>
                           <p className="text-gray-500 text-sm font-medium">No new reservations</p>
@@ -998,21 +777,17 @@ const renderPage = () => {
                               key={note.id}
                               onClick={() => handleAdminNotificationClick(note.id)}
                               className="px-4 py-3.5 hover:bg-gradient-to-r hover:from-green-50 hover:to-transparent cursor-pointer transition-all duration-200 group"
-                              style={{ animationDelay: `${index * 50}ms` }}
                             >
                               <div className="flex items-start gap-3">
-                                {/* Icon */}
                                 <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200">
                                   <span className="text-white text-sm font-bold">🎱</span>
                                 </div>
 
-                                {/* Content */}
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm text-gray-800 font-medium leading-relaxed">
                                     New reservation from Account #{note.accountId}
                                   </p>
 
-                                  {/* Reservation Details */}
                                   <div className="flex flex-wrap items-center gap-2 mt-2">
                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
                                       📅 {new Date(note.date).toLocaleDateString()}
@@ -1027,17 +802,17 @@ const renderPage = () => {
                                     </span>
 
                                     {note.status && (
-                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${note.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                        note.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
                                         note.status === 'confirmed' ? 'bg-green-100 text-green-700' :
-                                          note.status === 'cancelled' ? 'bg-red-100 text-red-700' :
-                                            'bg-gray-100 text-gray-700'
-                                        }`}>
+                                        note.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                                        'bg-gray-100 text-gray-700'
+                                      }`}>
                                         📋 {note.status}
                                       </span>
                                     )}
                                   </div>
 
-                                  {/* Additional Info */}
                                   <div className="flex items-center gap-2 mt-2 text-xs text-gray-600">
                                     {note.billiardType && (
                                       <span>🎱 {note.billiardType}</span>
@@ -1061,7 +836,6 @@ const renderPage = () => {
                                   </div>
                                 </div>
 
-                                {/* Dot indicator */}
                                 <div className="flex-shrink-0 w-2 h-2 bg-green-500 rounded-full mt-2 group-hover:scale-125 transition-transform"></div>
                               </div>
                             </div>
@@ -1070,7 +844,6 @@ const renderPage = () => {
                       )}
                     </div>
 
-                    {/* Footer */}
                     {adminNotifications.length > 0 && (
                       <div className="bg-gradient-to-r from-green-50 to-transparent px-5 py-3 border-t border-green-100">
                         <button
@@ -1116,14 +889,12 @@ const renderPage = () => {
 
                   <ChevronDown
                     size={16}
-                    className={`text-gray-500 transition-transform duration-200 ${profileMenuOpen ? "rotate-180" : ""
-                      }`}
+                    className={`text-gray-500 transition-transform duration-200 ${profileMenuOpen ? "rotate-180" : ""}`}
                   />
                 </button>
 
                 {profileMenuOpen && (
                   <div className="absolute right-0 mt-3 w-72 bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
-                    {/* Profile Header with Gradient */}
                     <div className="relative bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 px-6 py-8">
                       <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
                       <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
@@ -1153,7 +924,6 @@ const renderPage = () => {
                       </div>
                     </div>
 
-                    {/* Menu Items */}
                     <div className="p-2">
                       <button
                         onClick={() => {
@@ -1173,7 +943,6 @@ const renderPage = () => {
 
                       <button
                         onClick={() => {
-                          // Add settings functionality here
                           setProfileMenuOpen(false);
                         }}
                         className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent rounded-xl transition-all duration-200 group"
@@ -1188,7 +957,6 @@ const renderPage = () => {
                       </button>
                     </div>
 
-                    {/* Logout Button */}
                     <div className="p-2 border-t border-gray-100">
                       <button
                         onClick={handleLogout}
