@@ -88,7 +88,7 @@ export default function MarketingDashboard() {
       for (let i = 6; i >= 0; i--) {
         const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
         const dateStr = date.toISOString().split('T')[0];
-        
+
         const { data: dayData } = await supabase
           .from('reservation')
           .select('*')
@@ -181,9 +181,10 @@ export default function MarketingDashboard() {
 
         <div className="p-6 transition-all bg-white shadow-lg rounded-2xl hover:shadow-xl">
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center justify-center w-12 h-12 bg-green-100 rounded-xl">
-              <DollarSign className="text-green-600" size={24} />
+            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+              <span className="text-green-600 font-bold text-lg">₱</span>
             </div>
+
             <span className="px-3 py-1 text-xs font-semibold text-green-600 bg-green-100 rounded-full">7 Days</span>
           </div>
           <p className="text-sm text-gray-600">Weekly Revenue</p>
