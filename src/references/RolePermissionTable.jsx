@@ -3,25 +3,35 @@ import { Eye, Edit3, Save, Shield, Lock, Unlock, X, Users, Table, Database, Cloc
 import { supabase } from "../lib/supabaseClient";
 import Swal from "sweetalert2";
 
+// ✅ COMPLETE LIST - Database permission names (with spaces)
 const sidebarPages = [
+  // Dashboards
   "Admin Dashboard",
+  "Manager Dashboard",
   "Customer Dashboard",
   "FrontDesk Dashboard",
-  "Manager Dashboard",
+  "Revenue Dashboard",
+  
+  // Reservations
   "Reservation (Customer)",
   "Reservation (Front Desk)",
   "Reservation (Manager)",
   "Reservation (Admin)",
   "Reservation (Super Admin)",
-  "History",
+  
+  // Main Features
+  "QR Check-In",
+  "Finalize Payment",
   "Calendar",
+  "History",
+  "Profile",
+  "CancelBookings",
+  
+  // Maintenance/Admin
   "User Management",
   "Reference",
   "Audit Trail",
   "Support",
-    "Finalize Payment",
-      "QR Check-In",
-      
 ];
 
 export default function RolePermissionCards() {
@@ -56,6 +66,7 @@ export default function RolePermissionCards() {
       });
 
       setPermissions(permObj);
+      console.log("📋 Loaded permissions:", permObj);
     } catch (err) {
       console.error(err);
       Swal.fire({
@@ -86,6 +97,8 @@ export default function RolePermissionCards() {
         has_access: permissions[roleId]?.[page] || false,
       }));
 
+      console.log("💾 Saving permissions:", updates);
+
       // Delete existing permissions for this role first
       await supabase.from("Role_Permission").delete().eq("role_id", roleId);
 
@@ -102,6 +115,9 @@ export default function RolePermissionCards() {
         confirmButtonColor: "#3085d6",
         confirmButtonText: "OK",
       });
+
+      // Refresh permissions after save
+      fetchRolesAndPermissions();
     } catch (err) {
       console.error(err);
       Swal.fire({
@@ -143,8 +159,21 @@ export default function RolePermissionCards() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-6">
       <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">Role & Permissions</h1>
+          <p className="text-gray-600">Manage user roles and their access to different pages</p>
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <p className="text-sm text-blue-800">
+              <span className="font-semibold">💡 Tip:</span> Click "Edit Access" to modify permissions. 
+              Changes are saved to the database and will affect user access immediately.
+            </p>
+          </div>
+        </div>
+
+        {/* Role Cards Grid */}
         <div className="grid lg:grid-cols-3 md:grid-cols-2 grid-cols-1 gap-6">
           {roles.map((role, index) => {
             const isEditing = editingRole === role.role_id;
@@ -175,23 +204,23 @@ export default function RolePermissionCards() {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 text-sm text-gray-700 font-medium">
                       <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full shadow-lg shadow-emerald-500/50 animate-pulse"></div>
-                      <span>Visible</span>
+                      <span>Active</span>
                     </div>
-                    <button className="p-2.5 hover:bg-white/60 rounded-xl transition-all duration-300 backdrop-blur-sm border border-white/40 hover:shadow-lg group">
-                      <Eye size={18} className="text-emerald-500 group-hover:scale-110 transition-transform" />
-                    </button>
+                    <div className="text-xs text-gray-500">
+                      {enabledCount} / {sidebarPages.length} pages
+                    </div>
                   </div>
 
                   <button
                     onClick={() => (isEditing ? handleSave(role.role_id) : setEditingRole(role.role_id))}
-                    className="flex items-center gap-2 text-sm text-gray-700 hover:text-blue-600 transition-all duration-300 font-medium group"
+                    className="flex items-center gap-2 text-sm text-gray-700 hover:text-blue-600 transition-all duration-300 font-medium group w-full justify-center py-2 rounded-lg hover:bg-blue-50"
                   >
                     {isEditing ? (
                       <>
                         <div className="p-1.5 rounded-lg bg-blue-100/80 group-hover:bg-blue-200/80 transition-colors">
                           <Save size={16} className="group-hover:scale-110 transition-transform" />
                         </div>
-                        <span>Save Access</span>
+                        <span>Save Changes</span>
                       </>
                     ) : (
                       <>
