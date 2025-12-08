@@ -30,7 +30,7 @@ const NavItem = ({ icon: Icon, label, page, currentPage, onClick, badge, permiss
     'QRCheckInPage': 'QR Check-In',
     'finalize': 'Finalize Payment',
     'calendar': 'Calendar',
-    'profile': 'Profile',
+    'Profile': 'Profile',
     'CancelBookings': 'CancelBookings',
     'history': 'History',
     'UserManagement': 'User Management',
@@ -342,7 +342,7 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
             <NavItem 
               icon={User} 
               label="Profile" 
-              page="profile"
+              page="Profile"
               currentPage={currentPage} 
               onClick={setCurrentPage} 
               permissions={permissions} 
