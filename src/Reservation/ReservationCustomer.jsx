@@ -1116,7 +1116,7 @@ const handleConfirmReschedule = async () => {
                       >
                         Payment:
                       </p>
-                      <p
+                                       <p
                         style={{
                           margin: 0,
                           fontSize: "16px",
@@ -1125,10 +1125,10 @@ const handleConfirmReschedule = async () => {
                         }}
                       >
                         {reservation.paymentMethod === "full"
-                          ? "Paid"
+                          ? "Paid in Full"
                           : reservation.paymentMethod === "half"
-                          ? "Partial"
-                          : "Pending"}
+                          ? "Half Paid"
+                          : "Completed"}
                       </p>
                     </div>
                 {/* QR Code - Only show for approved, ongoing, or completed reservations */}
