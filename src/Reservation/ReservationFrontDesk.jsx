@@ -311,6 +311,25 @@ export default function ReservationFrontDesk() {
       });
     }
   };
+  const [tableMap, setTableMap] = useState({});
+
+  useEffect(() => {
+    const fetchTables = async () => {
+      const { data, error } = await supabase
+        .from("billiard_table")
+        .select("table_id, table_name");
+
+      if (!error && data) {
+        const map = {};
+        data.forEach(t => {
+          map[t.table_id] = t.table_name;
+        });
+        setTableMap(map);
+      }
+    };
+
+    fetchTables();
+  }, []);
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -466,9 +485,12 @@ export default function ReservationFrontDesk() {
 
                       <td className="px-4 py-3 text-sm text-gray-700">{customerName}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        Table {reservation.table_id}
-                        <span className="text-xs text-gray-500 ml-1 capitalize">({reservation.billiard_type || 'Standard'})</span>
+                        {tableMap[reservation.table_id] || `Table ${reservation.table_id}`}
+                        <span className="text-xs text-gray-500 ml-1 capitalize">
+                          ({reservation.billiard_type || 'Standard'})
+                        </span>
                       </td>
+
                       <td className="px-4 py-3 text-sm text-gray-600">{formatDate(reservation.reservation_date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{formatTime(reservation.start_time)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{reservation.duration} hrs</td>
@@ -478,8 +500,8 @@ export default function ReservationFrontDesk() {
                           {/* Payment Method Badge */}
                           <span
                             className={`px-4 py-2 rounded-full text-xs font-bold capitalize inline-flex items-center gap-2 ${reservation.payment_method?.toLowerCase() === "gcash"
-                                ? "bg-gradient-to-r from-white to-blue-200 text-black shadow-md"
-                                : "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md"
+                              ? "bg-gradient-to-r from-white to-blue-200 text-black shadow-md"
+                              : "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md"
                               }`}
                           >
                             {reservation.payment_method?.toLowerCase() === "gcash" && (
