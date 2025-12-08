@@ -9,134 +9,50 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    if (!email || !password) {
-      Swal.fire({
-        icon: "warning",
-        title: "Missing Information",
-        text: "Please enter both email and password.",
-        confirmButtonColor: "#1e293b",
-      });
-      return;
-    }
+  
+// ===== IN LOGIN COMPONENT - FIX handleLogin =====
 
-    setLoading(true);
+const handleLogin = async (e) => {
+  e.preventDefault();
+  if (!email || !password) {
+    Swal.fire({
+      icon: "warning",
+      title: "Missing Information",
+      text: "Please enter both email and password.",
+      confirmButtonColor: "#1e293b",
+    });
+    return;
+  }
 
-    try {
-      // Check for hardcoded ADMIN login first
-      if (
-        email.trim().toUpperCase() === "ADMIN" &&
-        password.trim().toUpperCase() === "ADMIN"
-      ) {
-        const sessionData = {
-          account_id: "0000",
-          email: "ADMIN",
-          role: "admin",
-          full_name: "Administrator",
-        };
-        localStorage.setItem("userSession", JSON.stringify(sessionData));
+  setLoading(true);
 
-        try {
-          await supabase.from("system_log").insert({
-            account_id: "0000",
-            action: "Admin login",
-          });
-        } catch (logErr) {
-          console.warn("Log skipped:", logErr.message);
-        }
-
-        Swal.fire({
-          icon: "success",
-          title: "Welcome Admin!",
-          text: "You have logged in successfully.",
-          showConfirmButton: false,
-          timer: 1800,
-        });
-
-        setTimeout(() => {
-          onClose();
-          if (onLoginSuccess) onLoginSuccess(sessionData);
-        }, 1800);
-        return;
-      }
-
-      // Regular login via Supabase
-      const { data: accountData, error: accountError } = await supabase
-        .from("accounts")
-        .select("account_id, email, role, password")
-        .eq("email", email.toLowerCase())
-        .single();
-
-      if (accountError || !accountData) {
-        throw new Error("Invalid email or password.");
-      }
-
-      if (accountData.password !== password) {
-        throw new Error("Invalid email or password.");
-      }
-
-      // CHECK KUNG NAKA-DEACTIVATE ANG USER
-      const { data: deactData, error: deactError } = await supabase
-        .from("deact_user")
-        .select("deact_id, deactivated_until, reason, status")
-        .eq("account_id", accountData.account_id)
-        .eq("status", "deactivated")
-        .order("deactivation_date", { ascending: false })
-        .limit(1)
-        .single();
-
-      if (deactData) {
-        const deactivatedUntil = new Date(deactData.deactivated_until);
-        const now = new Date();
-
-        // Check kung active pa yung deactivation
-        if (now < deactivatedUntil) {
-          const options = { 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          };
-          const formattedDate = deactivatedUntil.toLocaleString('en-US', options);
-
-          throw new Error(
-            `Your account is currently deactivated until ${formattedDate}. Reason: ${deactData.reason || 'Account suspended'}`
-          );
-        }
-      }
-
-      let fullName = email;
-      if (accountData.role === "customer") {
-        const { data: customerData } = await supabase
-          .from("customer")
-          .select("first_name, middle_name, last_name")
-          .eq("account_id", accountData.account_id)
-          .single();
-
-        if (customerData) {
-          fullName = `${customerData.first_name} ${customerData.middle_name || ""} ${customerData.last_name}`.trim();
-        }
-      }
-
+  try {
+    // Check for hardcoded ADMIN login first
+    if (
+      email.trim().toUpperCase() === "ADMIN" &&
+      password.trim().toUpperCase() === "ADMIN"
+    ) {
       const sessionData = {
-        account_id: accountData.account_id,
-        email: accountData.email,
-        role: accountData.role,
-        full_name: fullName,
+        account_id: "0000",
+        email: "ADMIN",
+        role: "admin",
+        full_name: "Administrator",
       };
       localStorage.setItem("userSession", JSON.stringify(sessionData));
 
-      await supabase.from("system_log").insert({
-        account_id: accountData.account_id,
-        action: `${accountData.role.charAt(0).toUpperCase() + accountData.role.slice(1)} login`,
-      });
+      try {
+        await supabase.from("system_log").insert({
+          account_id: "0000",
+          action: "Admin login",
+        });
+      } catch (logErr) {
+        console.warn("Log skipped:", logErr.message);
+      }
 
       Swal.fire({
         icon: "success",
-        title: "Login Successful",
-        text: `Welcome back, ${fullName}!`,
+        title: "Welcome Admin!",
+        text: "You have logged in successfully.",
         showConfirmButton: false,
         timer: 1800,
       });
@@ -145,19 +61,98 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
         onClose();
         if (onLoginSuccess) onLoginSuccess(sessionData);
       }, 1800);
-    } catch (err) {
-      console.error("Login error:", err);
+      return;
+    }
+
+    // Regular login via Supabase
+    const { data: accountData, error: accountError } = await supabase
+      .from("accounts")
+      .select("account_id, email, role, password, status")
+      .eq("email", email.toLowerCase())
+      .single();
+
+    if (accountError || !accountData) {
+      throw new Error("Invalid email or password.");
+    }
+
+    // ✅ CHECK IF ACCOUNT IS DEACTIVATED
+    if (accountData.status === 'deactivated') {
+      // Fetch deactivation details
+      const { data: deactData } = await supabase
+        .from('deact_user')
+        .select('duration_days, deactivated_until')
+        .eq('account_id', accountData.account_id)
+        .eq('status', 'deactivated')
+        .maybeSingle();
+
+      let message = "Your account has been deactivated.";
+      if (deactData?.duration_days) {
+        message = `Your account has been deactivated for ${deactData.duration_days} day${deactData.duration_days > 1 ? 's' : ''}.`;
+      }
+
       Swal.fire({
-        icon: "error",
-        title: "Login Failed",
-        text: err.message || "An unexpected error occurred.",
+        icon: "warning",
+        title: "Account Deactivated",
+        text: message,
         confirmButtonColor: "#1e293b",
       });
-    } finally {
-      setLoading(false);
+      return;
     }
-  };
 
+    if (accountData.password !== password) {
+      throw new Error("Invalid email or password.");
+    }
+
+    let fullName = email;
+    if (accountData.role === "customer") {
+      const { data: customerData } = await supabase
+        .from("customer")
+        .select("first_name, middle_name, last_name")
+        .eq("account_id", accountData.account_id)
+        .single();
+
+      if (customerData) {
+        fullName = `${customerData.first_name} ${customerData.middle_name || ""} ${customerData.last_name}`.trim();
+      }
+    }
+
+    const sessionData = {
+      account_id: accountData.account_id,
+      email: accountData.email,
+      role: accountData.role,
+      full_name: fullName,
+    };
+    localStorage.setItem("userSession", JSON.stringify(sessionData));
+
+    await supabase.from("system_log").insert({
+      account_id: accountData.account_id,
+      action: `${accountData.role.charAt(0).toUpperCase() + accountData.role.slice(1)} login`,
+    });
+
+    Swal.fire({
+      icon: "success",
+      title: "Login Successful",
+      text: `Welcome back, ${fullName}!`,
+      showConfirmButton: false,
+      timer: 1800,
+    });
+
+    setTimeout(() => {
+      onClose();
+      if (onLoginSuccess) onLoginSuccess(sessionData);
+    }, 1800);
+  } catch (err) {
+    console.error("Login error:", err);
+    Swal.fire({
+      icon: "error",
+      title: "Login Failed",
+      text: err.message || "An unexpected error occurred.",
+      confirmButtonColor: "#1e293b",
+    });
+  } finally {
+    setLoading(false);
+  }
+};
   const handleClose = () => {
     setEmail("");
     setPassword("");
