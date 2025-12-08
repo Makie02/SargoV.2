@@ -694,7 +694,9 @@ export default function ReservationFrontDesk() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-gray-600 uppercase tracking-wide">Table</p>
-                    <p className="text-gray-800 font-semibold">Table {selectedReservation.table_id}</p>
+                    <p className="text-gray-800 font-semibold">
+                      {tableMap[selectedReservation.table_id] || `Table ${selectedReservation.table_id}`}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-600 uppercase tracking-wide">Billiard Type</p>
