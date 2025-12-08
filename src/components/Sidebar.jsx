@@ -7,23 +7,31 @@ import {
 } from "lucide-react";
 import logo from "../logo/logo.jpg"
 
-// NAV ITEM with proper permission checking
+// NAV ITEM with proper permission checking and page mapping
 const NavItem = ({ icon: Icon, label, page, currentPage, onClick, badge, permissions, onMobileClick }) => {
   const isActive = currentPage === page;
   
-  // Map page names to permission page names
+  // ✅ FIXED: Map internal page names to database permission names
   const pagePermissionMap = {
+    // Dashboard pages
     'ManagerDashboard': 'Manager Dashboard',
     'MarketingDashboard': 'Revenue Dashboard',
     'CustomerDashboard': 'Customer Dashboard',
     'frontDeskDashboard': 'FrontDesk Dashboard',
+    'dashboard': 'Admin Dashboard',
+    
+    // Reservation pages
     'CustomerReservation': 'Reservation (Customer)',
     'ReservationFrontDesk': 'Reservation (Front Desk)',
+    'ReservationManager': 'Reservation (Manager)',
+    'ReservationAdmin': 'Reservation (Admin)',
+    
+    // Other pages
     'QRCheckInPage': 'QR Check-In',
     'finalize': 'Finalize Payment',
     'calendar': 'Calendar',
     'profile': 'Profile',
-    'CancelBookings': 'Cancel Bookings',
+    'CancelBookings': 'CancelBookings',
     'history': 'History',
     'UserManagement': 'User Management',
     'Reference': 'Reference',
@@ -38,7 +46,10 @@ const NavItem = ({ icon: Icon, label, page, currentPage, onClick, badge, permiss
   return (
     <button
       onClick={() => {
-        if (page) onClick(page);
+        if (page) {
+          onClick(page); // ✅ Set the internal page name
+          console.log(`Navigating to: ${page} (Permission: ${permissionPage})`);
+        }
         if (onMobileClick) onMobileClick();
       }}
       className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-all duration-200
@@ -90,6 +101,34 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
 
     const fetchPermissions = async () => {
       try {
+        // ✅ ADMIN BYPASS - Full access
+        if (session.role?.toLowerCase() === "admin") {
+          console.log("✅ Admin detected - Full access granted");
+          const allPermissions = {
+            "Admin Dashboard": true,
+            "Manager Dashboard": true,
+            "Customer Dashboard": true,
+            "FrontDesk Dashboard": true,
+            "Revenue Dashboard": true,
+            "Reservation (Customer)": true,
+            "Reservation (Front Desk)": true,
+            "Reservation (Manager)": true,
+            "Reservation (Admin)": true,
+            "QR Check-In": true,
+            "Finalize Payment": true,
+            "Calendar": true,
+            "History": true,
+            "User Management": true,
+            "Reference": true,
+            "Audit Trail": true,
+            "Profile": true,
+            "CancelBookings": true,
+          };
+          setPermissions(allPermissions);
+          setLoading(false);
+          return;
+        }
+
         // Get the role ID first
         const { data: rolesData, error: rolesError } = await supabase
           .from("UserRole")
@@ -201,7 +240,9 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
           </div>
         ) : (
           <>
-            {/* DASHBOARDS */}
+            {/* DASHBOARDS - Using internal page names */}
+    
+
             <NavItem 
               icon={LayoutDashboard} 
               label="Manager Dashboard" 
@@ -244,7 +285,7 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
 
             <div className="my-2 border-t border-gray-200"></div>
 
-            {/* RESERVATIONS */}
+            {/* RESERVATIONS - Using internal page names */}
             <NavItem 
               icon={ClipboardList} 
               label="My Reservations" 
@@ -271,7 +312,7 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
               page="QRCheckInPage"
               currentPage={currentPage} 
               onClick={setCurrentPage} 
-              permissions={permissions} 
+              permissions={permissions}
               onMobileClick={closeMobileMenu} 
             />
 
@@ -287,7 +328,7 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
 
             <div className="my-2 border-t border-gray-200"></div>
 
-            {/* COMMON PAGES */}
+            {/* COMMON PAGES - Using internal page names */}
             <NavItem 
               icon={Calendar} 
               label="Calendar" 
@@ -330,7 +371,7 @@ function Sidebar({ currentPage, setCurrentPage, userRole, isDesktopOpen, setIsDe
 
             <div className="my-2 border-t border-gray-200"></div>
 
-            {/* MAINTENANCE */}
+            {/* MAINTENANCE - Using internal page names */}
             {hasMaintenanceAccess && (
               <div>
                 <button
