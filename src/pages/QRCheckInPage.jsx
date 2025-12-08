@@ -274,6 +274,49 @@ const handleSearch = async (query = searchQuery) => {
       }
       return;
     }
+
+    if (found.status === "ongoing") {
+      const result = await Swal.fire({
+        icon: 'info',
+        title: 'Reservation Ongoing',
+        text: 'This reservation is currently ongoing.',
+        showCancelButton: true,
+        confirmButtonText: 'View Details',
+        cancelButtonText: 'Close',
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#6b7280'
+      });
+
+      if (result.isConfirmed) {
+        setSelectedReservation(found);
+        setShowSuggestions(false);
+      }
+      return;
+    }
+
+    if (found.status !== "pending" && found.status !== "approved") {
+      const result = await Swal.fire({
+        icon: 'warning',
+        title: 'Invalid Status',
+        text: `Reservation status: ${found.status}`,
+        showCancelButton: true,
+        confirmButtonText: 'View Details',
+        cancelButtonText: 'Close',
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#6b7280'
+      });
+
+      if (result.isConfirmed) {
+        setSelectedReservation(found);
+        setShowSuggestions(false);
+      }
+      return;
+    }
+
+    // If pending or approved, show directly without Swal
+    setSelectedReservation(found);
+    setShowSuggestions(false);
+  };
   const handleSuggestionClick = (reservation) => {
     setSearchQuery(reservation.reservation_no);
     setShowSuggestions(false);
