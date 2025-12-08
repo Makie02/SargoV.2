@@ -33,7 +33,7 @@ function App() {
   const [userRole, setUserRole] = useState(null);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [currentPage, setCurrentPage] = useState(
-    localStorage.getItem("currentPage") || "MarketingDashboard"
+    localStorage.getItem("currentPage") || "dashboard"
   );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [isDesktopOpen, setIsDesktopOpen] = useState(true);
@@ -42,6 +42,7 @@ function App() {
 
   // ✅ FIXED: Map database permission names to internal page names
   const permissionToPageMap = {
+    'Admin Dashboard': 'dashboard',
     'Manager Dashboard': 'ManagerDashboard',
     'Customer Dashboard': 'CustomerDashboard',
     'FrontDesk Dashboard': 'frontDeskDashboard',
@@ -57,7 +58,7 @@ function App() {
     'User Management': 'UserManagement',
     'Reference': 'Reference',
     'Audit Trail': 'auditTrail',
-    'Profile': 'profile',
+    'Profile': 'Profile',
     'CancelBookings': 'CancelBookings',
   };
 
@@ -145,7 +146,7 @@ function App() {
             "UserManagement": true,
             "Reference": true,
             "auditTrail": true,
-            "profile": true,
+            "Profile": true,
             "CancelBookings": true,
           };
           setPermissions(allPermissions);
@@ -448,10 +449,10 @@ function App() {
           break;
         case 'admin':
         case 'superadmin':
-          setCurrentPage('MarketingDashboard');
+          setCurrentPage('dashboard');
           break;
         default:
-          setCurrentPage('MarketingDashboard');
+          setCurrentPage('dashboard');
       }
     }, 0);
   };
@@ -494,12 +495,12 @@ function App() {
   const NotFoundPage = () => (
     <div className="flex items-center justify-center min-h-screen bg-gray-50">
       <div className="text-center">
-        <h1 className="mb-4 text-6xl font-bold text-gray-300">403</h1>
-        <h2 className="mb-2 text-2xl font-semibold text-gray-700">Access Denied</h2>
-        <p className="mb-6 text-gray-500">You don't have permission to access this page.</p>
+        <h1 className="text-6xl font-bold text-gray-300 mb-4">403</h1>
+        <h2 className="text-2xl font-semibold text-gray-700 mb-2">Access Denied</h2>
+        <p className="text-gray-500 mb-6">You don't have permission to access this page.</p>
         <button
           onClick={() => window.location.reload()}
-          className="px-6 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           Refresh Page
         </button>
@@ -659,7 +660,7 @@ function App() {
       "UserManagement": <UserManagement />,
       "Reference": <Reference />,
       "auditTrail": <AuditTrail />,
-      "profile": <ViewProfile />,
+      "Profile": <ViewProfile />,
       "CancelBookings": <CancelBookings />,
       "Payment": <Payment />,
       "ResetPassword": <ResetPassword />,
@@ -716,7 +717,7 @@ function App() {
       />
       <div className="flex-1 overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 shadow-sm">
+        <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm">
           <h1 className="text-xl font-semibold text-gray-900 capitalize">
           </h1>
 
@@ -726,7 +727,7 @@ function App() {
               <div className="relative">
                 <button
                   onClick={() => setNotificationOpen(!notificationOpen)}
-                  className="relative p-2 transition-all duration-200 rounded-full hover:bg-blue-50 focus:outline-none"
+                  className="p-2 rounded-full hover:bg-blue-50 transition-all duration-200 focus:outline-none relative"
                   title="Notifications"
                 >
                   <Bell size={24} className="text-blue-600" />
@@ -739,11 +740,11 @@ function App() {
 
                 {/* Notification Dropdown */}
                 {notificationOpen && (
-                  <div className="absolute right-0 z-50 mt-3 overflow-hidden border border-blue-100 shadow-2xl w-96 bg-white/95 backdrop-blur-xl rounded-2xl animate-fadeIn">
+                  <div className="absolute right-0 mt-3 w-96 bg-white/95 backdrop-blur-xl border border-blue-100 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
                     {/* Header */}
-                    <div className="px-5 py-4 bg-gradient-to-r from-blue-500 to-blue-600">
+                    <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-4">
                       <div className="flex items-center justify-between">
-                        <h3 className="flex items-center gap-2 text-base font-semibold text-white">
+                        <h3 className="text-white font-semibold text-base flex items-center gap-2">
                           <Bell size={18} />
                           Notifications
                         </h3>
@@ -756,14 +757,14 @@ function App() {
                     </div>
 
                     {/* Notification List */}
-                    <div className="overflow-y-auto max-h-96">
+                    <div className="max-h-96 overflow-y-auto">
                       {notifications.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center px-4 py-12">
-                          <div className="flex items-center justify-center w-16 h-16 mb-3 rounded-full bg-gradient-to-br from-blue-100 to-blue-50">
+                        <div className="flex flex-col items-center justify-center py-12 px-4">
+                          <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-50 rounded-full flex items-center justify-center mb-3">
                             <Bell size={28} className="text-blue-400" />
                           </div>
-                          <p className="text-sm font-medium text-gray-500">No new notifications</p>
-                          <p className="mt-1 text-xs text-gray-400">You're all caught up!</p>
+                          <p className="text-gray-500 text-sm font-medium">No new notifications</p>
+                          <p className="text-gray-400 text-xs mt-1">You're all caught up!</p>
                         </div>
                       ) : (
                         <div className="divide-y divide-blue-50">
@@ -776,8 +777,8 @@ function App() {
                             >
                               <div className="flex items-start gap-3">
                                 {/* Icon */}
-                                <div className="flex items-center justify-center flex-shrink-0 w-10 h-10 transition-transform duration-200 rounded-full shadow-md bg-gradient-to-br from-blue-500 to-blue-600 group-hover:scale-110">
-                                  <span className="text-sm font-bold text-white">
+                                <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200">
+                                  <span className="text-white text-sm font-bold">
                                     {note.activityType === 'extension' ? '⏱️' :
                                       note.activityType === 'status_change' ? '📋' :
                                         note.activityType === 'payment' ? '₱' :
@@ -788,7 +789,7 @@ function App() {
 
                                 {/* Content */}
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium leading-relaxed text-gray-800">
+                                  <p className="text-sm text-gray-800 font-medium leading-relaxed">
                                     {note.message}
                                   </p>
 
@@ -814,7 +815,7 @@ function App() {
                                   </div>
 
                                   <div className="flex items-center gap-2 mt-1.5">
-                                    <p className="text-xs font-medium text-blue-500">
+                                    <p className="text-xs text-blue-500 font-medium">
                                       {getTimeAgo(note.timestamp)}
                                     </p>
                                     <span className="text-xs text-gray-400">•</span>
@@ -825,7 +826,7 @@ function App() {
                                 </div>
 
                                 {/* Dot indicator */}
-                                <div className="flex-shrink-0 w-2 h-2 mt-2 transition-transform bg-blue-500 rounded-full group-hover:scale-125"></div>
+                                <div className="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full mt-2 group-hover:scale-125 transition-transform"></div>
                               </div>
                             </div>
                           ))}
@@ -835,10 +836,10 @@ function App() {
 
                     {/* Footer */}
                     {notifications.length > 0 && (
-                      <div className="px-5 py-3 border-t border-blue-100 bg-gradient-to-r from-blue-50 to-transparent">
+                      <div className="bg-gradient-to-r from-blue-50 to-transparent px-5 py-3 border-t border-blue-100">
                         <button
                           onClick={handleMarkAllAsRead}
-                          className="w-full text-sm font-semibold text-center text-blue-600 transition-colors hover:text-blue-700"
+                          className="text-blue-600 text-sm font-semibold hover:text-blue-700 transition-colors w-full text-center"
                         >
                           Mark all as read
                         </button>
@@ -854,7 +855,7 @@ function App() {
               <div className="relative">
                 <button
                   onClick={() => setAdminNotificationOpen(!adminNotificationOpen)}
-                  className="relative p-2 transition-all duration-200 rounded-full hover:bg-green-50 focus:outline-none"
+                  className="p-2 rounded-full hover:bg-green-50 transition-all duration-200 focus:outline-none relative"
                   title="Reservation Notifications"
                 >
                   <Bell size={24} className="text-green-600" />
@@ -867,11 +868,11 @@ function App() {
 
                 {/* Admin Notification Dropdown */}
                 {adminNotificationOpen && (
-                  <div className="absolute right-0 z-50 mt-3 overflow-hidden border border-green-100 shadow-2xl w-96 bg-white/95 backdrop-blur-xl rounded-2xl animate-fadeIn">
+                  <div className="absolute right-0 mt-3 w-96 bg-white/95 backdrop-blur-xl border border-green-100 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
                     {/* Header */}
-                    <div className="px-5 py-4 bg-gradient-to-r from-green-500 to-green-600">
+                    <div className="bg-gradient-to-r from-green-500 to-green-600 px-5 py-4">
                       <div className="flex items-center justify-between">
-                        <h3 className="flex items-center gap-2 text-base font-semibold text-white">
+                        <h3 className="text-white font-semibold text-base flex items-center gap-2">
                           <Bell size={18} />
                           Reservation Notifications
                         </h3>
@@ -884,14 +885,14 @@ function App() {
                     </div>
 
                     {/* Notification List */}
-                    <div className="overflow-y-auto max-h-96">
+                    <div className="max-h-96 overflow-y-auto">
                       {adminNotifications.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center px-4 py-12">
-                          <div className="flex items-center justify-center w-16 h-16 mb-3 rounded-full bg-gradient-to-br from-green-100 to-green-50">
+                        <div className="flex flex-col items-center justify-center py-12 px-4">
+                          <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green-50 rounded-full flex items-center justify-center mb-3">
                             <Bell size={28} className="text-green-400" />
                           </div>
-                          <p className="text-sm font-medium text-gray-500">No new reservations</p>
-                          <p className="mt-1 text-xs text-gray-400">You're all caught up!</p>
+                          <p className="text-gray-500 text-sm font-medium">No new reservations</p>
+                          <p className="text-gray-400 text-xs mt-1">You're all caught up!</p>
                         </div>
                       ) : (
                         <div className="divide-y divide-green-50">
@@ -904,13 +905,13 @@ function App() {
                             >
                               <div className="flex items-start gap-3">
                                 {/* Icon */}
-                                <div className="flex items-center justify-center flex-shrink-0 w-10 h-10 transition-transform duration-200 rounded-full shadow-md bg-gradient-to-br from-green-500 to-green-600 group-hover:scale-110">
-                                  <span className="text-sm font-bold text-white">🎱</span>
+                                <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200">
+                                  <span className="text-white text-sm font-bold">🎱</span>
                                 </div>
 
                                 {/* Content */}
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium leading-relaxed text-gray-800">
+                                  <p className="text-sm text-gray-800 font-medium leading-relaxed">
                                     New reservation from Account #{note.accountId}
                                   </p>
 
@@ -953,7 +954,7 @@ function App() {
                                   </div>
 
                                   <div className="flex items-center gap-2 mt-1.5">
-                                    <p className="text-xs font-medium text-green-500">
+                                    <p className="text-xs text-green-500 font-medium">
                                       {getTimeAgo(note.timestamp)}
                                     </p>
                                     <span className="text-xs text-gray-400">•</span>
@@ -964,7 +965,7 @@ function App() {
                                 </div>
 
                                 {/* Dot indicator */}
-                                <div className="flex-shrink-0 w-2 h-2 mt-2 transition-transform bg-green-500 rounded-full group-hover:scale-125"></div>
+                                <div className="flex-shrink-0 w-2 h-2 bg-green-500 rounded-full mt-2 group-hover:scale-125 transition-transform"></div>
                               </div>
                             </div>
                           ))}
@@ -974,10 +975,10 @@ function App() {
 
                     {/* Footer */}
                     {adminNotifications.length > 0 && (
-                      <div className="px-5 py-3 border-t border-green-100 bg-gradient-to-r from-green-50 to-transparent">
+                      <div className="bg-gradient-to-r from-green-50 to-transparent px-5 py-3 border-t border-green-100">
                         <button
                           onClick={handleMarkAllAdminAsRead}
-                          className="w-full text-sm font-semibold text-center text-green-600 transition-colors hover:text-green-700"
+                          className="text-green-600 text-sm font-semibold hover:text-green-700 transition-colors w-full text-center"
                         >
                           Mark all as read
                         </button>
@@ -993,7 +994,7 @@ function App() {
               <div className="relative">
                 <button
                   onClick={() => setProfileMenuOpen(!profileMenuOpen)}
-                  className="flex items-center gap-3 px-3 py-2 transition-all duration-200 focus:outline-none hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent rounded-xl group"
+                  className="flex items-center gap-3 focus:outline-none hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent px-3 py-2 rounded-xl transition-all duration-200 group"
                 >
                   <div className="relative">
                     <img
@@ -1002,12 +1003,12 @@ function App() {
                         `https://ui-avatars.com/api/?name=${userProfile.name || "User"}&background=3B82F6&color=fff`
                       }
                       alt="Profile"
-                      className="object-cover w-10 h-10 transition-all duration-200 border-2 border-blue-200 rounded-full shadow-md group-hover:border-blue-400"
+                      className="w-10 h-10 rounded-full object-cover border-2 border-blue-200 shadow-md group-hover:border-blue-400 transition-all duration-200"
                     />
                     <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
                   </div>
 
-                  <div className="hidden text-left sm:block">
+                  <div className="hidden sm:block text-left">
                     <p className="text-sm font-semibold text-gray-900 truncate max-w-[120px]">
                       {userProfile.name}
                     </p>
@@ -1024,11 +1025,11 @@ function App() {
                 </button>
 
                 {profileMenuOpen && (
-                  <div className="absolute right-0 z-50 mt-3 overflow-hidden border border-gray-200 shadow-2xl w-72 bg-white/95 backdrop-blur-xl rounded-2xl animate-fadeIn">
+                  <div className="absolute right-0 mt-3 w-72 bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
                     {/* Profile Header with Gradient */}
-                    <div className="relative px-6 py-8 bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700">
-                      <div className="absolute top-0 right-0 w-32 h-32 -mt-16 -mr-16 rounded-full bg-white/10"></div>
-                      <div className="absolute bottom-0 left-0 w-24 h-24 -mb-12 -ml-12 rounded-full bg-white/10"></div>
+                    <div className="relative bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 px-6 py-8">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
+                      <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
 
                       <div className="relative flex flex-col items-center">
                         <div className="relative mb-3">
@@ -1038,18 +1039,18 @@ function App() {
                               `https://ui-avatars.com/api/?name=${userProfile.name || "User"}&background=fff&color=3B82F6&size=128`
                             }
                             alt="Profile"
-                            className="object-cover w-20 h-20 border-4 border-white rounded-full shadow-xl"
+                            className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-xl"
                           />
-                          <div className="absolute w-6 h-6 bg-green-500 border-4 border-white rounded-full -bottom-1 -right-1"></div>
+                          <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 border-4 border-white rounded-full"></div>
                         </div>
 
-                        <h3 className="max-w-full px-2 text-lg font-bold text-white truncate">
+                        <h3 className="text-white font-bold text-lg truncate max-w-full px-2">
                           {userProfile.name}
                         </h3>
-                        <p className="mt-1 text-sm font-medium text-blue-100 capitalize">
+                        <p className="text-blue-100 text-sm font-medium capitalize mt-1">
                           {userProfile.role}
                         </p>
-                        <p className="max-w-full px-2 mt-1 text-xs text-blue-200 truncate">
+                        <p className="text-blue-200 text-xs mt-1 truncate max-w-full px-2">
                           {userProfile.email}
                         </p>
                       </div>
@@ -1059,12 +1060,12 @@ function App() {
                     <div className="p-2">
                       <button
                         onClick={() => {
-                          setCurrentPage('profile');
+                          setCurrentPage('Profile');
                           setProfileMenuOpen(false);
                         }}
-                        className="flex items-center w-full gap-3 px-4 py-3 text-sm text-gray-700 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent rounded-xl group"
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent rounded-xl transition-all duration-200 group"
                       >
-                        <div className="flex items-center justify-center w-10 h-10 transition-colors bg-blue-100 rounded-xl group-hover:bg-blue-200">
+                        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-200 transition-colors">
                           <span className="text-lg">👤</span>
                         </div>
                         <div className="flex-1 text-left">
@@ -1078,9 +1079,9 @@ function App() {
                           // Add settings functionality here
                           setProfileMenuOpen(false);
                         }}
-                        className="flex items-center w-full gap-3 px-4 py-3 text-sm text-gray-700 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent rounded-xl group"
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent rounded-xl transition-all duration-200 group"
                       >
-                        <div className="flex items-center justify-center w-10 h-10 transition-colors bg-purple-100 rounded-xl group-hover:bg-purple-200">
+                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center group-hover:bg-purple-200 transition-colors">
                           <span className="text-lg">⚙️</span>
                         </div>
                         <div className="flex-1 text-left">
@@ -1094,9 +1095,9 @@ function App() {
                     <div className="p-2 border-t border-gray-100">
                       <button
                         onClick={handleLogout}
-                        className="flex items-center w-full gap-3 px-4 py-3 text-sm text-red-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-red-50 hover:to-transparent rounded-xl group"
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-gradient-to-r hover:from-red-50 hover:to-transparent rounded-xl transition-all duration-200 group"
                       >
-                        <div className="flex items-center justify-center w-10 h-10 transition-colors bg-red-100 rounded-xl group-hover:bg-red-200">
+                        <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center group-hover:bg-red-200 transition-colors">
                           <span className="text-lg">🚪</span>
                         </div>
                         <div className="flex-1 text-left">
@@ -1113,7 +1114,7 @@ function App() {
         </div>
 
         {/* Main content */}
-        <div className="min-h-full p-0 bg-gray-50">{renderPage()}</div>
+        <div className="bg-gray-50 min-h-full p-0">{renderPage()}</div>
       </div>
     </div>
   );
