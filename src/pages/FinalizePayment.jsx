@@ -32,154 +32,7 @@ useEffect(() => {
     fetchExtensions();
   }, []);
 
-  // ✅ AUTO END SESSION - CHECK EVERY MINUTE
-  useEffect(() => {
-    const checkSessionEnd = async () => {
-      const now = new Date();
-      const currentTime = now.toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit', 
-        hour12: true 
-      });
-
-      for (const payment of activePayments) {
-        if (payment.time_end) {
-          const [endTime, endPeriod] = payment.time_end.split(' ');
-          const [endHour, endMinute] = endTime.split(':').map(Number);
-          
-          const [currentTimeStr, currentPeriod] = currentTime.split(' ');
-          const [currentHour, currentMinute] = currentTimeStr.split(':').map(Number);
-
-          // Convert to 24-hour format for comparison
-          let endHour24 = endHour;
-          if (endPeriod === 'PM' && endHour !== 12) endHour24 += 12;
-          if (endPeriod === 'AM' && endHour === 12) endHour24 = 0;
-
-          let currentHour24 = currentHour;
-          if (currentPeriod === 'PM' && currentHour !== 12) currentHour24 += 12;
-          if (currentPeriod === 'AM' && currentHour === 12) currentHour24 = 0;
-
-          const endTimeMinutes = endHour24 * 60 + endMinute;
-          const currentTimeMinutes = currentHour24 * 60 + currentMinute;
-
-          // If current time >= end time, auto end session
-          if (currentTimeMinutes >= endTimeMinutes) {
-            await autoEndSession(payment);
-          }
-        }
-      }
-    };
-
-    // Check every minute
-    const interval = setInterval(checkSessionEnd, 60000);
-    
-    // Check immediately on mount
-    checkSessionEnd();
-
-    return () => clearInterval(interval);
-  }, [activePayments]);
-
-  const autoEndSession = async (payment) => {
-    try {
-      const totalBill = payment.total_bill || 0;
-      const paymentType = payment.payment_type;
-      let totalPaid = 0;
-
-      if (paymentType === 'Full Payment') {
-        totalPaid = payment.full_amount || 0;
-      } else if (paymentType === 'Half Payment') {
-        totalPaid = payment.half_amount || 0;
-      } else if (paymentType === 'Partial Payment') {
-        totalPaid = payment.partial_amount || 0;
-      }
-
-      // Check if payment is complete
-      if (totalPaid >= totalBill) {
-        // ✅ PAYMENT COMPLETE - END SESSION
-        const { error } = await supabase
-          .from('reservation')
-          .update({
-            status: 'completed',
-            payment_status: 'Completed',
-            End_Session: true,
-            End_Session_Notice: true
-          })
-          .eq('id', payment.id);
-
-        if (error) throw error;
-
-        // Log to transaction history
-        await supabase
-          .from('transaction_history')
-          .insert({
-            table_id: payment.table_id,
-            reservation_date: payment.reservation_date,
-            start_time: payment.start_time,
-            duration: payment.duration,
-            status: 'completed',
-            extension: payment.extension || 0,
-            time_end: payment.time_end,
-            paymentMethod: payment.paymentMethod || 'Cash',
-            billiard_type: payment.billiard_type,
-            amount: totalBill
-          });
-
-        // Show notification
-        await Swal.fire({
-          icon: 'info',
-          title: 'Session Ended Automatically',
-          html: `
-            <div style="text-align: left; padding: 20px;">
-              <p><strong>Table ${payment.table_id}</strong> session has ended.</p>
-              <p style="margin-top: 10px; color: #10b981;">✅ Payment Complete</p>
-              <p style="margin-top: 5px; font-size: 14px; color: #6b7280;">
-                Time: ${payment.time_end}
-              </p>
-            </div>
-          `,
-          timer: 3000,
-          showConfirmButton: false
-        });
-
-        fetchPayments();
-      } else {
-        // ⚠️ PAYMENT INCOMPLETE - SET NOTICE ONLY
-        const { error } = await supabase
-          .from('reservation')
-          .update({
-            End_Session_Notice: true
-          })
-          .eq('id', payment.id);
-
-        if (error) throw error;
-
-        // Show notification for unpaid balance
-        await Swal.fire({
-          icon: 'warning',
-          title: 'Session Time Ended',
-          html: `
-            <div style="text-align: left; padding: 20px;">
-              <p><strong>Table ${payment.table_id}</strong> time has ended.</p>
-              <p style="margin-top: 10px; color: #f59e0b;">⚠️ Payment Incomplete</p>
-              <p style="margin-top: 5px;">Total Bill: <strong>₱${totalBill}</strong></p>
-              <p>Amount Paid: <strong>₱${totalPaid}</strong></p>
-              <p style="color: #dc2626;">Remaining: <strong>₱${totalBill - totalPaid}</strong></p>
-              <hr style="margin: 15px 0;">
-              <p style="font-size: 14px; color: #6b7280;">
-                Please collect remaining payment before ending session.
-              </p>
-            </div>
-          `,
-          confirmButtonText: 'OK',
-          confirmButtonColor: '#f59e0b'
-        });
-
-        fetchPayments();
-      }
-    } catch (error) {
-      console.error('Error auto-ending session:', error);
-    }
-  };
+ 
   const fetchExtensions = async () => {
     try {
       const { data, error } = await supabase
@@ -323,8 +176,6 @@ useEffect(() => {
     totalPaid = payment.full_amount || 0;
   } else if (paymentType === 'Half Payment') {
     totalPaid = payment.half_amount || 0;
-  } else if (paymentType === 'Partial Payment') {
-    totalPaid = payment.partial_amount || 0;
   }
 
   if (totalPaid < totalBill) {
@@ -357,16 +208,14 @@ useEffect(() => {
       let updateData = {
         status: 'completed',
         payment_status: 'Completed',
-        End_Session: true,              // ✅ DAGDAG TO PRE!
-        End_Session_Notice: true        // ✅ DAGDAG TO PRE!
+        End_Session: true,              
+        End_Session_Notice: true        
       };
 
       if (paymentType === 'Full Payment') {
         updateData.full_amount = totalBill;
       } else if (paymentType === 'Half Payment') {
         updateData.half_amount = totalBill;
-      } else if (paymentType === 'Partial Payment') {
-        updateData.partial_amount = totalBill;
       }
 
       const { error } = await supabase
@@ -438,8 +287,8 @@ useEffect(() => {
       .update({
         status: 'completed',
         payment_status: 'Completed',
-        End_Session: true,              // ✅ DAGDAG TO PRE!
-        End_Session_Notice: true        // ✅ DAGDAG TO PRE!
+        End_Session: true,              
+        End_Session_Notice: true       
       })
       .eq('id', id);
 
@@ -488,24 +337,23 @@ useEffect(() => {
     setShowExtensionModal(true);
   };
 
-  const handleExtensionSubmit = async () => {
-    if (!selectedExtension) {
-      await Swal.fire({
-        icon: 'warning',
-        title: 'No Extension Selected',
-        text: 'Please select an extension duration.',
-        confirmButtonColor: '#3b82f6'
-      });
-      return;
-    }
+const handleExtensionSubmit = async () => {
+  if (!selectedExtension) {
+    await Swal.fire({
+      icon: 'warning',
+      title: 'No Extension Selected',
+      text: 'Please select an extension duration.',
+      confirmButtonColor: '#3b82f6'
+    });
+    return;
+  }
 
-    const extensionData = extensions.find(ext => ext.id === parseInt(selectedExtension));
-    if (!extensionData) return;
+  const extensionData = extensions.find(ext => ext.id === parseInt(selectedExtension));
+  if (!extensionData) return;
 
-    // Ask if they want to pay now or later
-    const paymentChoice = await Swal.fire({
-      title: 'Extension Payment',
-      html: `
+  const paymentChoice = await Swal.fire({
+    title: 'Extension Payment',
+    html: `
       <div style="text-align: left; margin: 20px 0;">
         <p style="margin-bottom: 10px;"><strong>Extension Details:</strong></p>
         <p style="margin-bottom: 8px;">Hours: <strong>${extensionData.extension_hours} hour(s)</strong></p>
@@ -515,97 +363,93 @@ useEffect(() => {
         <p style="font-weight: bold; color: #2563eb;">When will customer pay for extension?</p>
       </div>
     `,
-      icon: 'question',
-      showDenyButton: true,
-      showCancelButton: true,
-      confirmButtonText: 'Pay Now (Cash)',
-      denyButtonText: 'Pay Later',
-      cancelButtonText: 'Cancel',
-      confirmButtonColor: '#10b981',
-      denyButtonColor: '#f59e0b',
-      cancelButtonColor: '#6b7280',
+    icon: 'question',
+    showDenyButton: true,
+    showCancelButton: true,
+    confirmButtonText: 'Pay Now (Cash)',
+    denyButtonText: 'Pay Later',
+    cancelButtonText: 'Cancel',
+    confirmButtonColor: '#10b981',
+    denyButtonColor: '#f59e0b',
+    cancelButtonColor: '#6b7280',
+  });
+
+  if (paymentChoice.isDismissed) return;
+
+  const payNow = paymentChoice.isConfirmed;
+
+  try {
+    const newTotalBill = (selectedPayment.total_bill || 0) + extensionData.price;
+    const extensionHours = Math.round(parseFloat(extensionData.extension_hours));
+    const newExtension = (selectedPayment.extension || 0) + extensionHours;
+    const newDuration = selectedPayment.duration + extensionHours;
+
+    let updateData = {
+      extension: newExtension,
+      duration: newDuration,
+      total_bill: newTotalBill,
+      status: 'ongoing',
+    };
+
+    if (payNow) {
+      const paymentType = selectedPayment.payment_type;
+
+      if (paymentType === 'Full Payment') {
+        updateData.full_amount = newTotalBill;
+      } else if (paymentType === 'Half Payment') {
+        updateData.half_amount = newTotalBill;
+      }
+
+
+      updateData.paymentMethod = 'Cash';
+      updateData.payment_status = 'Completed'; // ✅ ADDED
+    }
+
+    const { error } = await supabase
+      .from('reservation')
+      .update(updateData)
+      .eq('id', selectedPayment.id);
+
+    if (error) throw error;
+
+    await Swal.fire({
+      icon: 'success',
+      title: payNow ? 'Extension Paid!' : 'Extension Added!',
+      text: payNow
+        ? 'Extension paid with cash. Session continues.'
+        : 'Extension added. Payment can be settled later.',
+      timer: 2000,
+      showConfirmButton: false
     });
 
-    if (paymentChoice.isDismissed) return;
-
-    const payNow = paymentChoice.isConfirmed;
-
-    try {
-      const newTotalBill = (selectedPayment.total_bill || 0) + extensionData.price;
-      const extensionHours = Math.round(parseFloat(extensionData.extension_hours));
-      const newExtension = (selectedPayment.extension || 0) + extensionHours;
-      const newDuration = selectedPayment.duration + extensionHours;
-
-      let updateData = {
-        extension: newExtension,
+    await supabase
+      .from('transaction_history')
+      .insert({
+        table_id: selectedPayment.table_id,
+        reservation_date: selectedPayment.reservation_date,
+        start_time: selectedPayment.start_time,
         duration: newDuration,
-        total_bill: newTotalBill,
-        status: 'ongoing', // STAY ONGOING KAHIT PAY LATER
-      };
-
-      if (payNow) {
-        // Pay Now - Cash payment, update the payment amounts
-        const paymentType = selectedPayment.payment_type;
-
-        if (paymentType === 'Full Payment') {
-          updateData.full_amount = newTotalBill;
-        } else if (paymentType === 'Half Payment') {
-          updateData.half_amount = newTotalBill;
-        } else if (paymentType === 'Partial Payment') {
-          updateData.partial_amount = newTotalBill;
-        }
-
-        updateData.paymentMethod = 'Cash';
-      }
-      // If Pay Later, just update total_bill, don't update payment amounts
-
-      const { error } = await supabase
-        .from('reservation')
-        .update(updateData)
-        .eq('id', selectedPayment.id);
-
-      if (error) throw error;
-
-      await Swal.fire({
-        icon: 'success',
-        title: payNow ? 'Extension Paid!' : 'Extension Added!',
-        text: payNow
-          ? 'Extension paid with cash. Session continues.'
-          : 'Extension added. Payment can be settled later.',
-        timer: 2000,
-        showConfirmButton: false
+        status: 'ongoing',
+        extension: newExtension,
+        time_end: calculateEndTime(selectedPayment.start_time, newDuration),
+        paymentMethod: payNow ? 'Cash' : 'Pending',
+        billiard_type: selectedPayment.billiard_type,
+        amount: newTotalBill
       });
 
-      // DAGDAG TO - LOG EXTENSION SA TRANSACTION HISTORY!
-      await supabase
-        .from('transaction_history')
-        .insert({
-          table_id: selectedPayment.table_id,
-          reservation_date: selectedPayment.reservation_date,
-          start_time: selectedPayment.start_time,
-          duration: newDuration,
-          status: 'ongoing',
-          extension: newExtension,
-          time_end: calculateEndTime(selectedPayment.start_time, newDuration),
-          paymentMethod: payNow ? 'Cash' : 'Pending',
-          billiard_type: selectedPayment.billiard_type,
-          amount: newTotalBill
-        });
-
-
-      setShowExtensionModal(false);
-      setSelectedPayment(null);
-      fetchPayments();
-    } catch (error) {
-      console.error('Error adding extension:', error);
-      await Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Failed to add extension. Please try again.',
-        confirmButtonColor: '#ef4444'
-      });
-    }
-  };
+    setShowExtensionModal(false);
+    setSelectedPayment(null);
+    fetchPayments();
+  } catch (error) {
+    console.error('Error adding extension:', error);
+    await Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'Failed to add extension. Please try again.',
+      confirmButtonColor: '#ef4444'
+    });
+  }
+};
   const handleConfirmPaymentClick = (payment) => {
     setSelectedPayment(payment);
     setPaymentAmount('');
@@ -613,19 +457,17 @@ useEffect(() => {
   };
 
 
-
-
- const handleConfirmPaymentSubmit = async () => {
+const handleConfirmPaymentSubmit = async () => {
   if (!selectedPayment) return;
 
   const paymentType = selectedPayment.payment_type;
   const totalBill = selectedPayment.total_bill || 0;
 
   // ============================================
-  // FULL PAYMENT - NEW FLOW WITH AUTO REFERENCE
+  // FULL PAYMENT
   // ============================================
   if (paymentType === 'Full Payment') {
-    const autoReferenceNo = `${Date.now()}`; // Auto-generate reference number
+    const autoReferenceNo = `${Date.now()}`;
     
     const paymentConfirm = await Swal.fire({
       title: 'Process Full Payment',
@@ -661,7 +503,6 @@ useEffect(() => {
       return;
     }
 
-    // Show loading
     Swal.fire({
       title: 'Processing Payment...',
       html: '<div style="padding: 20px;"><p style="margin-top: 15px; font-size: 16px;">Please wait...</p></div>',
@@ -687,7 +528,6 @@ useEffect(() => {
 
       if (error) throw error;
 
-      // Log to transaction history
       await supabase
         .from('transaction_history')
         .insert({
@@ -706,7 +546,7 @@ useEffect(() => {
 
       await Swal.fire({
         icon: 'success',
-        title: 'Payment Successful!',
+        title: 'Payment Confirmed!',
         html: `
           <div style="text-align: left; padding: 20px;">
             <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; border: 2px solid #10b981; margin-bottom: 15px;">
@@ -720,7 +560,7 @@ useEffect(() => {
             </div>
             
             <p style="margin-top: 20px; color: #10b981; font-weight: 600; text-align: center;">
-              ✅ Payment completed! Moving to Current sessions.
+              ✅ Payment confirmed! Moving to Ongoing sessions.
             </p>
           </div>
         `,
@@ -747,25 +587,19 @@ useEffect(() => {
   }
 
   // ============================================
-  // HALF PAYMENT & PARTIAL PAYMENT - ORIGINAL FLOW
+  // HALF PAYMENT ONLY
   // ============================================
- // ============================================
-// HALF PAYMENT & PARTIAL PAYMENT - NEW FLOW
-// ============================================
-if ((paymentType === 'Half Payment' || paymentType === 'Partial Payment') && !paymentAmount) {
-  await Swal.fire({
-    icon: 'warning',
-    title: 'Amount Required',
-    text: 'Please enter the payment amount.',
-    confirmButtonColor: '#f59e0b'
-  });
-  return;
-}
+  if (paymentType === 'Half Payment' && !paymentAmount) {
+    await Swal.fire({
+      icon: 'warning',
+      title: 'Amount Required',
+      text: 'Please enter the payment amount.',
+      confirmButtonColor: '#f59e0b'
+    });
+    return;
+  }
 
-try {
-  let updateData = {};
-
-  if (paymentType === 'Half Payment') {
+  try {
     const newAmount = parseInt(paymentAmount) || 0;
     const previousAmount = selectedPayment.half_amount || 0;
     const newTotal = previousAmount + newAmount;
@@ -780,145 +614,6 @@ try {
       return;
     }
 
-    // ✅ ASK PAYMENT METHOD - CASH OR GCASH
-    const paymentMethodChoice = await Swal.fire({
-      title: 'Select Payment Method',
-      html: `
-        <div style="text-align: left; padding: 20px;">
-          <div style="background: #e0f2fe; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #0ea5e9;">
-            <p style="margin: 5px 0; color: #0369a1; font-size: 14px;">Payment Amount</p>
-            <p style="margin: 5px 0; font-weight: bold; font-size: 24px; color: #0c4a6e;">₱${newAmount}</p>
-          </div>
-          <p style="color: #666; font-size: 14px; margin-bottom: 15px;">How will the customer pay?</p>
-        </div>
-      `,
-      icon: 'question',
-      showDenyButton: true,
-      showCancelButton: true,
-      confirmButtonText: '💵 Cash',
-      denyButtonText: '📱 GCash',
-      cancelButtonText: 'Cancel',
-      confirmButtonColor: '#10b981',
-      denyButtonColor: '#3b82f6',
-      cancelButtonColor: '#6b7280',
-    });
-
-    if (paymentMethodChoice.isDismissed) return;
-
-    const isCash = paymentMethodChoice.isConfirmed;
-    let refNumber = '';
-
-    // ✅ IF CASH - AUTO GENERATE REFERENCE
-    if (isCash) {
-      refNumber = `${Date.now()}`;
-      
-      const confirmCash = await Swal.fire({
-        title: 'Confirm Cash Payment',
-        html: `
-          <div style="text-align: left; padding: 20px;">
-            <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-              <p style="margin: 5px 0; color: #6b7280; font-size: 14px;">Reference Number</p>
-              <p style="margin: 5px 0; font-weight: bold; font-size: 18px; color: #1f2937;">${refNumber}</p>
-            </div>
-            <div style="background: #dbeafe; padding: 15px; border-radius: 8px; border: 2px solid #0ea5e9;">
-              <p style="margin: 5px 0; color: #0369a1; font-size: 14px;">Amount</p>
-              <p style="margin: 5px 0; font-weight: bold; font-size: 24px; color: #0c4a6e;">₱${newAmount}</p>
-            </div>
-          </div>
-        `,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: '💳 Process Payment',
-        cancelButtonText: 'Cancel',
-        confirmButtonColor: '#10b981',
-        cancelButtonColor: '#6b7280',
-      });
-
-      if (!confirmCash.isConfirmed) return;
-
-    } else {
-      // ✅ IF GCASH - INPUT REFERENCE NUMBER
-      const gcashInput = await Swal.fire({
-        title: 'GCash Payment',
-        html: `
-          <div style="text-align: left; padding: 20px;">
-            <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #0ea5e9;">
-              <p style="margin: 5px 0; color: #0369a1; font-size: 14px;">Amount</p>
-              <p style="margin: 5px 0; font-weight: bold; font-size: 24px; color: #0c4a6e;">₱${newAmount}</p>
-            </div>
-            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">GCash Reference Number *</label>
-            <input id="gcash-ref" type="text" placeholder="Enter GCash reference number" 
-              style="width: 100%; padding: 12px; border: 2px solid #d1d5db; border-radius: 8px; font-size: 16px;" />
-            <p style="margin-top: 8px; font-size: 12px; color: #6b7280;">Enter the GCash transaction reference number</p>
-          </div>
-        `,
-        icon: 'info',
-        showCancelButton: true,
-        confirmButtonText: '💳 Process Payment',
-        cancelButtonText: 'Cancel',
-        confirmButtonColor: '#3b82f6',
-        cancelButtonColor: '#6b7280',
-        preConfirm: () => {
-          const ref = document.getElementById('gcash-ref').value;
-          if (!ref.trim()) {
-            Swal.showValidationMessage('Reference number is required');
-            return false;
-          }
-          return ref.trim();
-        }
-      });
-
-      if (!gcashInput.isConfirmed) return;
-      refNumber = gcashInput.value;
-    }
-
-    // ✅ SHOW LOADING
-    Swal.fire({
-      title: 'Processing Payment...',
-      html: '<div style="padding: 20px;"><p style="margin-top: 15px; font-size: 16px;">Please wait...</p></div>',
-      allowOutsideClick: false,
-      showConfirmButton: false,
-      didOpen: () => {
-        Swal.showLoading();
-      }
-    });
-
-    // ✅ UPDATE PAYMENT
-    updateData.half_amount = newTotal;
-    updateData.paymentMethod = isCash ? 'Cash' : 'GCash';
-    
-    // ✅ HANDLE REFERENCE NUMBERS ARRAY
-    const existingRefs = selectedPayment.reference_no 
-      ? (Array.isArray(selectedPayment.reference_no) 
-          ? selectedPayment.reference_no 
-          : [selectedPayment.reference_no])
-      : [];
-    
-    updateData.reference_no = [...existingRefs, refNumber];
-
-    if (newTotal >= totalBill) {
-      updateData.status = 'ongoing';
-    } else {
-      updateData.status = 'approved';
-    }
-
-  } else if (paymentType === 'Partial Payment') {
-    // ✅ SAME FLOW FOR PARTIAL PAYMENT
-    const newAmount = parseInt(paymentAmount) || 0;
-    const previousAmount = selectedPayment.partial_amount || 0;
-    const newTotal = previousAmount + newAmount;
-
-    if (newTotal > totalBill) {
-      await Swal.fire({
-        icon: 'error',
-        title: 'Amount Exceeds Bill',
-        text: `Total payment (₱${newTotal}) cannot exceed total bill (₱${totalBill})`,
-        confirmButtonColor: '#ef4444'
-      });
-      return;
-    }
-
-    // ✅ ASK PAYMENT METHOD
     const paymentMethodChoice = await Swal.fire({
       title: 'Select Payment Method',
       html: `
@@ -1018,8 +713,10 @@ try {
       }
     });
 
-    updateData.partial_amount = newTotal;
-    updateData.paymentMethod = isCash ? 'Cash' : 'GCash';
+    const updateData = {
+      half_amount: newTotal,
+      paymentMethod: isCash ? 'Cash' : 'GCash'
+    };
     
     const existingRefs = selectedPayment.reference_no 
       ? (Array.isArray(selectedPayment.reference_no) 
@@ -1029,84 +726,79 @@ try {
     
     updateData.reference_no = [...existingRefs, refNumber];
 
+    // ✅ FIX: Add payment_status
     if (newTotal >= totalBill) {
       updateData.status = 'ongoing';
+      updateData.payment_status = 'Completed'; // ✅ COMPLETED
     } else {
       updateData.status = 'approved';
+      updateData.payment_status = 'Pending'; // ✅ PENDING
     }
+
+    const { error } = await supabase
+      .from('reservation')
+      .update(updateData)
+      .eq('id', selectedPayment.id);
+
+    if (error) throw error;
+
+    const isComplete = newTotal >= totalBill;
+
+    await Swal.fire({
+      icon: 'success',
+      title: 'Payment Confirmed!',
+      html: `
+        <div style="text-align: left; padding: 20px;">
+          <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; border: 2px solid #10b981; margin-bottom: 15px;">
+            <p style="margin: 5px 0; color: #065f46; font-size: 14px;">Reference Numbers</p>
+            <p style="margin: 5px 0; font-weight: bold; font-size: 16px; color: #047857;">
+              ${updateData.reference_no.join(', ')}
+            </p>
+          </div>
+          <div style="background: #dbeafe; padding: 15px; border-radius: 8px;">
+            <p style="margin: 5px 0; color: #1e40af; font-size: 14px;">Amount Paid</p>
+            <p style="margin: 5px 0; font-weight: bold; font-size: 24px; color: #1e3a8a;">
+              ₱${newTotal}
+            </p>
+          </div>
+        </div>
+      `,
+      confirmButtonColor: '#10b981',
+      timer: 3000,
+      timerProgressBar: true
+    });
+
+    await supabase
+      .from('transaction_history')
+      .insert({
+        table_id: selectedPayment.table_id,
+        reservation_date: selectedPayment.reservation_date,
+        start_time: selectedPayment.start_time,
+        duration: selectedPayment.duration,
+        status: updateData.status,
+        extension: selectedPayment.extension || 0,
+        time_end: calculateEndTime(selectedPayment.start_time, selectedPayment.duration),
+        paymentMethod: updateData.paymentMethod,
+        billiard_type: selectedPayment.billiard_type,
+        amount: newTotal,
+        reference_no: updateData.reference_no
+      });
+
+    setShowConfirmModal(false);
+    setSelectedPayment(null);
+    setPaymentAmount('');
+    fetchPayments();
+    
+  } catch (error) {
+    console.error('Error confirming payment:', error);
+    await Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'Failed to confirm payment. Please try again.',
+      confirmButtonColor: '#ef4444'
+    });
   }
-
-  // ✅ UPDATE DATABASE
-  const { error } = await supabase
-    .from('reservation')
-    .update(updateData)
-    .eq('id', selectedPayment.id);
-
-  if (error) throw error;
-
-  const isComplete = (paymentType === 'Half Payment' && updateData.half_amount >= totalBill) ||
-    (paymentType === 'Partial Payment' && updateData.partial_amount >= totalBill);
-
-  // ✅ SUCCESS WITH REFERENCE NUMBERS
-  await Swal.fire({
-    icon: 'success',
-    title: 'Payment Successful!',
-    html: `
-      <div style="text-align: left; padding: 20px;">
-        <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; border: 2px solid #10b981; margin-bottom: 15px;">
-          <p style="margin: 5px 0; color: #065f46; font-size: 14px;">Reference Numbers</p>
-          <p style="margin: 5px 0; font-weight: bold; font-size: 16px; color: #047857;">
-            ${updateData.reference_no.join(', ')}
-          </p>
-        </div>
-        <div style="background: #dbeafe; padding: 15px; border-radius: 8px;">
-          <p style="margin: 5px 0; color: #1e40af; font-size: 14px;">Amount Paid</p>
-          <p style="margin: 5px 0; font-weight: bold; font-size: 24px; color: #1e3a8a;">
-            ₱${paymentType === 'Half Payment' ? updateData.half_amount : updateData.partial_amount}
-          </p>
-        </div>
-        <p style="margin-top: 20px; color: ${isComplete ? '#10b981' : '#f59e0b'}; font-weight: 600; text-align: center;">
-          ${isComplete ? '✅ Payment completed! Moving to Current sessions.' : '⚠️ Partial payment recorded. Remaining balance still pending.'}
-        </p>
-      </div>
-    `,
-    confirmButtonColor: '#10b981',
-    timer: 3000,
-    timerProgressBar: true
-  });
-
-  // Log to transaction history
-  await supabase
-    .from('transaction_history')
-    .insert({
-      table_id: selectedPayment.table_id,
-      reservation_date: selectedPayment.reservation_date,
-      start_time: selectedPayment.start_time,
-      duration: selectedPayment.duration,
-      status: isComplete ? 'ongoing' : 'approved',
-      extension: selectedPayment.extension || 0,
-      time_end: calculateEndTime(selectedPayment.start_time, selectedPayment.duration),
-      paymentMethod: updateData.paymentMethod,
-      billiard_type: selectedPayment.billiard_type,
-      amount: paymentType === 'Half Payment' ? updateData.half_amount : updateData.partial_amount,
-      reference_no: updateData.reference_no
-    });
-
-  setShowConfirmModal(false);
-  setSelectedPayment(null);
-  setPaymentAmount('');
-  fetchPayments();
-  
-} catch (error) {
-  console.error('Error confirming payment:', error);
-  await Swal.fire({
-    icon: 'error',
-    title: 'Error',
-    text: 'Failed to confirm payment. Please try again.',
-    confirmButtonColor: '#ef4444'
-  });
-}};
-
+};
   const handleViewDetails = (payment) => {
     setSelectedPayment(payment);
     setShowModal(true);
@@ -1212,8 +904,6 @@ try {
         totalAmountPaid = selectedPayment.full_amount || selectedPayment.total_bill || 0;
       } else if (selectedPayment.payment_type === 'Half Payment') {
         totalAmountPaid = selectedPayment.half_amount || 0;
-      } else if (selectedPayment.payment_type === 'Partial Payment') {
-        totalAmountPaid = selectedPayment.partial_amount || 0;
       }
 
       // Validate payment method
@@ -1286,7 +976,7 @@ try {
           </p>
           <p><strong>Total Bill:</strong> ₱${selectedPayment.total_bill || 0}</p>
           <p style="margin-top: 10px; color: ${totalAmountPaid >= selectedPayment.total_bill ? '#10b981' : '#f59e0b'};">
-            ${totalAmountPaid >= selectedPayment.total_bill ? '✅ Fully Paid' : '⚠️ Partial Payment'}
+            ${totalAmountPaid >= selectedPayment.total_bill ? '✅ Fully Paid' : ''}
           </p>
           <p style="margin-top: 15px; font-size: 12px; color: #6b7280;">
             Reference: ${referenceNumber.trim()}
@@ -1380,7 +1070,7 @@ try {
                     </div>
 
 
-                    <div className="mb-3 flex justify-between items-start">
+                    <div className="flex items-start justify-between mb-3">
 
                       {/* LEFT SIDE */}
                       <div className="space-y-1">
@@ -1498,7 +1188,7 @@ try {
                     <div className="mb-3 space-y-3">
 
                       {/* Time + Reservation No */}
-                      <div className="flex justify-between items-start">
+                      <div className="flex items-start justify-between">
                         {/* TIME */}
                         <div className="flex items-center gap-2 text-sm text-gray-700">
                           <Clock size={16} className="text-green-600" />
@@ -1540,7 +1230,7 @@ try {
                                 ? (payment.full_amount || 0)
                                 : payment.payment_type === 'Half Payment'
                                   ? (payment.half_amount || 0)
-                                  : (payment.partial_amount || 0)
+                                  : ('')
                               }
                             </span>
                           </div>
@@ -1552,7 +1242,7 @@ try {
                               ? (payment.full_amount || 0)
                               : payment.payment_type === 'Half Payment'
                                 ? (payment.half_amount || 0)
-                                : (payment.partial_amount || 0);
+                                : ('');
 
                             const remaining = totalBill - amountPaid;
 
@@ -1646,7 +1336,7 @@ try {
                       </span>
                     </div>
 
-                    <div className="mb-3 flex justify-between items-start">
+                    <div className="flex items-start justify-between mb-3">
 
                       {/* LEFT SIDE (Date + Amount) */}
                       <div className="space-y-1">
@@ -1819,20 +1509,20 @@ try {
             <p className="text-3xl font-bold text-indigo-900">₱{selectedPayment.total_bill || 0}</p>
           </div>
 
-          {(selectedPayment.payment_type === 'Half Payment' || selectedPayment.payment_type === 'Partial Payment') && (
+          {(selectedPayment.payment_type === 'Half Payment') && (
             <>
               <div className="p-4 border-2 rounded-lg bg-amber-50 border-amber-200">
                 <p className="mb-2 text-sm font-semibold text-amber-600">Previous Payment</p>
                 <p className="text-2xl font-bold text-amber-900">
                   ₱{selectedPayment.payment_type === 'Half Payment'
                     ? (selectedPayment.half_amount || 0)
-                    : (selectedPayment.partial_amount || 0)
+                    : ('')
                   }
                 </p>
                 <p className="mt-1 text-sm text-amber-700">
                   Remaining: ₱{selectedPayment.total_bill - (selectedPayment.payment_type === 'Half Payment'
                     ? (selectedPayment.half_amount || 0)
-                    : (selectedPayment.partial_amount || 0)
+                    : ('')
                   )}
                 </p>
               </div>
@@ -1856,7 +1546,7 @@ try {
               {paymentAmount && (() => {
                 const previousAmount = selectedPayment.payment_type === 'Half Payment'
                   ? (selectedPayment.half_amount || 0)
-                  : (selectedPayment.partial_amount || 0);
+                  : ('');
                 const newTotal = previousAmount + parseInt(paymentAmount || 0);
                 const remaining = selectedPayment.total_bill - newTotal;
                 const isExceeding = newTotal > selectedPayment.total_bill;
@@ -1889,12 +1579,6 @@ try {
                     {!isExceeding && remaining === 0 && (
                       <div className="p-2 mt-2 bg-green-100 rounded-lg">
                         <p className="text-sm font-bold text-green-800">✅ Payment Complete - Will move to Current!</p>
-                      </div>
-                    )}
-
-                    {!isExceeding && remaining > 0 && (
-                      <div className="p-2 mt-2 bg-yellow-100 border border-yellow-300 rounded-lg">
-                        <p className="text-sm font-bold text-yellow-800">⚠️ Partial Payment - Will stay in Pending</p>
                       </div>
                     )}
 
@@ -1983,8 +1667,7 @@ try {
                 </div>
                 <div className="p-4 rounded-lg bg-gray-50">
                   <p className="mb-1 text-sm text-gray-600">Time</p>
-                  <p className="font-bold text-gray-900">{formatTime(selectedPayment.start_time)}</p>
-                </div>
+                  <p className="font-bold text-gray-900">{formatTime(selectedPayment.start_time)} - {formatTime(selectedPayment.time_end)}</p>                </div>
                 <div className="p-4 rounded-lg bg-gray-50">
                   <p className="mb-1 text-sm text-gray-600">Duration</p>
                   <p className="font-bold text-gray-900">{selectedPayment.duration} hours</p>
@@ -1995,7 +1678,7 @@ try {
                 </div>
                 <div className="p-4 rounded-lg bg-gray-50">
                   <p className="mb-1 text-sm text-gray-600">Payment Method</p>
-                  <p className="font-bold text-gray-900">{selectedPayment.paymentMethod || 'N/A'}</p>
+                  <p className="font-bold text-gray-900">{selectedPayment.payment_method || 'N/A'}</p>
                 </div>
                 <div className="p-4 rounded-lg bg-gray-50">
                   <p className="mb-1 text-sm text-gray-600">Payment Type</p>
@@ -2051,9 +1734,7 @@ try {
                           ₱{Math.max(0, (selectedPayment.total_bill || 0) - (selectedPayment.half_amount || 0))}
                         </span>
                       </div>
-                      <div className={`rounded-lg p-2 border ${(selectedPayment.half_amount || 0) >= (selectedPayment.total_bill || 0)
-                        ? 'bg-green-50 border-green-200'
-                        : 'bg-yellow-50 border-yellow-200'
+                      <div className={`${(selectedPayment.half_amount || 0) >= (selectedPayment.total_bill || 0)
                         }`}>
                         <p className={`text-sm font-semibold text-center ${(selectedPayment.half_amount || 0) >= (selectedPayment.total_bill || 0)
                           ? 'text-green-800'
@@ -2061,46 +1742,12 @@ try {
                           }`}>
                           {(selectedPayment.half_amount || 0) >= (selectedPayment.total_bill || 0)
                             ? '✅ Fully Paid'
-                            : '⚠️ Partial Payment'}
-                        </p>
-                      </div>
-                    </>
-                  )}
-
-                  {selectedPayment.payment_type === 'Partial Payment' && (
-                    <>
-                      <hr className="border-gray-300" />
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-700">Amount Paid:</span>
-                        <span className="text-lg font-bold text-blue-600">₱{selectedPayment.partial_amount || 0}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-700">Remaining:</span>
-                        <span className="text-lg font-bold text-orange-600">
-                          ₱{Math.max(0, (selectedPayment.total_bill || 0) - (selectedPayment.partial_amount || 0))}
-                        </span>
-                      </div>
-                      <div className={`rounded-lg p-2 border ${(selectedPayment.partial_amount || 0) >= (selectedPayment.total_bill || 0)
-                        ? 'bg-green-50 border-green-200'
-                        : 'bg-yellow-50 border-yellow-200'
-                        }`}>
-                        <p className={`text-sm font-semibold text-center ${(selectedPayment.partial_amount || 0) >= (selectedPayment.total_bill || 0)
-                          ? 'text-green-800'
-                          : 'text-yellow-800'
-                          }`}>
-                          {(selectedPayment.partial_amount || 0) >= (selectedPayment.total_bill || 0)
-                            ? '✅ Fully Paid'
-                            : '⚠️ Partial Payment'}
+                            : ''}
                         </p>
                       </div>
                     </>
                   )}
                 </div>
-              </div>
-
-              <div className="p-4 border-2 border-indigo-200 rounded-lg bg-gradient-to-r from-indigo-50 to-purple-50">
-                <p className="mb-1 text-sm text-gray-600">Status</p>
-                <p className="text-2xl font-bold text-indigo-600 capitalize">{selectedPayment.status}</p>
               </div>
             </div>
           </div>
