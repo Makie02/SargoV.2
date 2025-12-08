@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from "../lib/supabaseClient";
 import Swal from 'sweetalert2';
-import { Calendar, Clock, DollarSign, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, DollarSign, Filter, ChevronLeft, ChevronRight, X, User, CreditCard } from 'lucide-react';
 
 const History = () => {
   const [transactions, setTransactions] = useState([]);
@@ -13,6 +13,8 @@ const History = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
   const itemsPerPage = 6;
 
   useEffect(() => {
@@ -150,6 +152,16 @@ const History = () => {
     });
   };
 
+  const formatFullDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
   const getUniqueMonths = () => {
     const months = transactions.map(t => {
       const date = new Date(t.created_at);
@@ -161,6 +173,16 @@ const History = () => {
 
     const uniqueMonths = Array.from(new Map(months.map(m => [m.value, m])).values());
     return uniqueMonths.sort((a, b) => b.value.localeCompare(a.value));
+  };
+
+  const handleViewDetails = (transaction) => {
+    setSelectedTransaction(transaction);
+    setShowDetailsModal(true);
+  };
+
+  const closeDetailsModal = () => {
+    setShowDetailsModal(false);
+    setSelectedTransaction(null);
   };
 
   // Pagination
@@ -240,7 +262,8 @@ const History = () => {
             currentTransactions.map(transaction => (
               <div
                 key={transaction.id}
-                className="backdrop-blur-xl bg-gradient-to-br from-white/80 to-blue-50/50 border border-white/40 rounded-2xl shadow-lg p-4 hover:shadow-xl transition-all duration-300 hover:scale-105"
+                onClick={() => handleViewDetails(transaction)}
+                className="backdrop-blur-xl bg-gradient-to-br from-white/80 to-blue-50/50 border border-white/40 rounded-2xl shadow-lg p-4 hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer"
               >
                 {/* Date */}
                 <div className="flex items-center gap-2 text-xs text-gray-600 mb-3">
@@ -269,7 +292,6 @@ const History = () => {
                 {/* Amount and Status */}
                 <div className="flex items-center justify-between pt-3 border-t border-gray-200">
                   <div className="flex items-center gap-1">
-                    <div className="w-4 h-4 text-green-600" />
                     <span className="text-xl font-bold text-green-600">
                       ₱{parseFloat(transaction.amount || 0).toFixed(2)}
                     </span>
@@ -331,6 +353,144 @@ const History = () => {
           </div>
         )}
       </div>
+
+      {/* Details Modal */}
+      {showDetailsModal && selectedTransaction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 rounded-t-3xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">Transaction Details</h2>
+                  <p className="text-sm text-blue-100 mt-1">Transaction ID: #{selectedTransaction.id}</p>
+                </div>
+                <button
+                  onClick={closeDetailsModal}
+                  className="p-2 hover:bg-white/20 rounded-full transition-all"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-6">
+              {/* Status Badge */}
+              <div className="flex justify-center">
+                <div className={`${getStatusStyle(selectedTransaction.status)} px-6 py-3 rounded-full`}>
+                  <span className="text-lg font-bold text-white uppercase">
+                    {selectedTransaction.status || 'N/A'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Table Information */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-4">Table Information</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Table Name:</span>
+                    <span className="font-semibold text-gray-800">{getTableName(selectedTransaction.table_id)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Billiard Type:</span>
+                    <span className="font-semibold text-gray-800">{selectedTransaction.billiard_type || 'Standard'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Date & Time Information */}
+              <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <Calendar className="w-5 h-5" />
+                  Date & Time
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Transaction Date:</span>
+                    <span className="font-semibold text-gray-800">{formatDate(selectedTransaction.created_at)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Reservation Date:</span>
+                    <span className="font-semibold text-gray-800">
+                      {selectedTransaction.reservation_date ? formatFullDate(selectedTransaction.reservation_date) : 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Start Time:</span>
+                    <span className="font-semibold text-gray-800">{selectedTransaction.start_time || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">End Time:</span>
+                    <span className="font-semibold text-gray-800">{selectedTransaction.time_end || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Duration:</span>
+                    <span className="font-semibold text-gray-800">{selectedTransaction.duration || 0} hour{selectedTransaction.duration > 1 ? 's' : ''}</span>
+                  </div>
+                  {selectedTransaction.extension > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Extension:</span>
+                      <span className="font-semibold text-orange-600">+{selectedTransaction.extension} hour{selectedTransaction.extension > 1 ? 's' : ''}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Payment Information */}
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5" />
+                  Payment Information
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Payment Method:</span>
+                    <span className="font-semibold text-gray-800 capitalize">
+                      {selectedTransaction.paymentMethod === 'full' ? 'Paid in Full' : 
+                       selectedTransaction.paymentMethod === 'half' ? 'Half Payment' : 
+                       selectedTransaction.paymentMethod || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center pt-3 border-t border-green-200">
+                    <span className="text-lg font-semibold text-gray-800">Total Amount:</span>
+                    <span className="text-2xl font-bold text-green-600">
+                      ₱{parseFloat(selectedTransaction.amount || 0).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Account Information (if available) */}
+              {selectedTransaction.account_id && (
+                <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl p-6">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <User className="w-5 h-5" />
+                    Account Information
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Account ID:</span>
+                      <span className="font-semibold text-gray-800">#{selectedTransaction.account_id}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="sticky bottom-0 bg-gray-50 p-6 rounded-b-3xl border-t border-gray-200">
+              <button
+                onClick={closeDetailsModal}
+                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
