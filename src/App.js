@@ -37,6 +37,211 @@ function App() {
   );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [isDesktopOpen, setIsDesktopOpen] = useState(true);
+  const [permissions, setPermissions] = useState({});
+  const [noPermissionsData, setNoPermissionsData] = useState(false);
+
+  // ✅ FIXED: Map database permission names to internal page names
+  const permissionToPageMap = {
+    'Admin Dashboard': 'dashboard',
+    'Manager Dashboard': 'ManagerDashboard',
+    'Customer Dashboard': 'CustomerDashboard',
+    'FrontDesk Dashboard': 'frontDeskDashboard',
+    'Revenue Dashboard': 'MarketingDashboard',
+    'Reservation (Customer)': 'CustomerReservation',
+    'Reservation (Front Desk)': 'ReservationFrontDesk',
+    'Reservation (Manager)': 'Reservation',
+    'Reservation (Admin)': 'Reservation',
+    'QR Check-In': 'QRCheckInPage',
+    'Finalize Payment': 'finalize',
+    'Calendar': 'calendar',
+    'History': 'history',
+    'User Management': 'UserManagement',
+    'Reference': 'Reference',
+    'Audit Trail': 'auditTrail',
+    'Profile': 'profile',
+    'CancelBookings': 'CancelBookings',
+  };
+
+  // Fetch role permissions
+  useEffect(() => {
+    const loadSession = async () => {
+      const sessionData = localStorage.getItem("userSession");
+      if (!sessionData) return;
+
+      try {
+        const session = JSON.parse(sessionData);
+        setUserRole(session.role);
+        setIsLoggedIn(true);
+
+        const savedPage = localStorage.getItem("currentPage");
+
+        // Default pages using INTERNAL names
+        const defaultPages = {
+          customer: 'CustomerDashboard',
+          frontdesk: 'frontDeskDashboard',
+          manager: 'ManagerDashboard',
+          admin: 'dashboard',
+          superadmin: 'dashboard'
+        };
+
+        if (savedPage) {
+          setCurrentPage(savedPage);
+        } else {
+          setCurrentPage(defaultPages[session.role] || 'dashboard');
+        }
+
+        const { data, error } = await supabase
+          .from("accounts")
+          .select("*")
+          .eq("email", session.email)
+          .single();
+
+        if (!error) {
+          setUserProfile({
+            name: session.full_name || session.username || "User",
+            email: data.email,
+            role: data.role,
+            profilePicture: data.ProfilePicuture || "",
+          });
+        }
+      } catch (error) {
+        console.error("Error parsing session:", error);
+        localStorage.removeItem("userSession");
+      }
+    };
+    loadSession();
+  }, []);
+
+  useEffect(() => {
+    const fetchRolePermissions = async () => {
+      const sessionData = localStorage.getItem("userSession");
+      if (!sessionData) return;
+
+      try {
+        const session = JSON.parse(sessionData);
+        const userRole = session.role;
+
+        if (!userRole) {
+          console.warn("⚠️ No role found in session");
+          setNoPermissionsData(true);
+          return;
+        }
+
+        // ✅ ADMIN BYPASS - Grant all permissions
+        if (userRole.toLowerCase() === "admin" || userRole.toLowerCase() === "superadmin") {
+          console.log("✅ Admin detected - Full access granted");
+          const allPermissions = {
+            "dashboard": true,
+            "ManagerDashboard": true,
+            "CustomerDashboard": true,
+            "frontDeskDashboard": true,
+            "MarketingDashboard": true,
+            "CustomerReservation": true,
+            "ReservationFrontDesk": true,
+            "Reservation": true,
+            "QRCheckInPage": true,
+            "finalize": true,
+            "calendar": true,
+            "history": true,
+            "UserManagement": true,
+            "Reference": true,
+            "auditTrail": true,
+            "profile": true,
+            "CancelBookings": true,
+          };
+          setPermissions(allPermissions);
+          setNoPermissionsData(false);
+          return;
+        }
+
+        // Fetch from database for other roles
+        const { data: roleData, error: roleError } = await supabase
+          .from("UserRole")
+          .select("role_id, role")
+          .ilike("role", userRole)
+          .maybeSingle();
+
+        if (roleError || !roleData) {
+          console.error("❌ Error fetching role:", roleError);
+          setNoPermissionsData(true);
+          return;
+        }
+
+        const roleId = roleData.role_id;
+        console.log("✅ Found role_id:", roleId, "for role:", roleData.role);
+
+        const { data: permsData, error: permsError } = await supabase
+          .from("Role_Permission")
+          .select("page, has_access")
+          .eq("role_id", roleId);
+
+        if (permsError) {
+          console.error("❌ Error fetching permissions:", permsError);
+          setNoPermissionsData(true);
+          return;
+        }
+
+        if (!permsData || permsData.length === 0) {
+          console.warn("⚠️ No permissions found for role_id:", roleId);
+
+          // Default permissions using INTERNAL names
+          const defaultPerms = {
+            frontdesk: {
+              "frontDeskDashboard": true,
+              "ReservationFrontDesk": true,
+              "QRCheckInPage": true,
+              "finalize": true,
+              "calendar": true,
+              "profile": true,
+              "history": true,
+            },
+            customer: {
+              "CustomerDashboard": true,
+              "CustomerReservation": true,
+              "calendar": true,
+              "profile": true,
+              "history": true,
+              "CancelBookings": true,
+            },
+            manager: {
+              "ManagerDashboard": true,
+              "Reservation": true,
+              "calendar": true,
+              "profile": true,
+              "history": true,
+            }
+          };
+
+          setPermissions(defaultPerms[userRole.toLowerCase()] || {});
+          setNoPermissionsData(false);
+          return;
+        }
+
+        // ✅ FIXED: Convert database permission names to internal page names
+        const permissionsObj = {};
+        permsData.forEach(({ page, has_access }) => {
+          if (has_access) {
+            // Convert permission name to internal page name
+            const internalPageName = permissionToPageMap[page] || page;
+            permissionsObj[internalPageName] = true;
+            console.log(`✅ Permission: ${page} -> Internal: ${internalPageName}`);
+          }
+        });
+
+        console.log("✅ Final permissions loaded:", permissionsObj);
+        setPermissions(permissionsObj);
+        setNoPermissionsData(false);
+
+      } catch (error) {
+        console.error("❌ Error in fetchRolePermissions:", error);
+        setNoPermissionsData(true);
+      }
+    };
+
+    if (isLoggedIn) {
+      fetchRolePermissions();
+    }
+  }, [isLoggedIn]);
 
   const [userProfile, setUserProfile] = useState({
     name: "",
@@ -47,7 +252,6 @@ function App() {
 
   const [notifications, setNotifications] = useState([]);
   const [notificationOpen, setNotificationOpen] = useState(false);
-  const [permissions, setPermissions] = useState({}); // ✅ ADDED: Store user permissions
 
   // Helper function to format time ago
   const getTimeAgo = (timestamp) => {
@@ -103,123 +307,11 @@ function App() {
 
   // Save current page
   useEffect(() => {
-    if (currentPage) localStorage.setItem("currentPage", currentPage);
+    if (currentPage) {
+      localStorage.setItem("currentPage", currentPage);
+      console.log("📄 Current page set to:", currentPage);
+    }
   }, [currentPage]);
-
-  // ✅ FIXED: Load session, profile & permissions
-  useEffect(() => {
-    const loadSession = async () => {
-      const sessionData = localStorage.getItem("userSession");
-      if (!sessionData) return;
-
-      try {
-        const session = JSON.parse(sessionData);
-        setUserRole(session.role);
-        setIsLoggedIn(true);
-
-        // Fetch user account data
-        const { data, error } = await supabase
-          .from("accounts")
-          .select("*")
-          .eq("email", session.email)
-          .single();
-
-        if (!error) {
-          setUserProfile({
-            name: session.full_name || session.username || "User",
-            email: data.email,
-            role: data.role,
-            profilePicture: data.ProfilePicuture || "",
-          });
-        }
-
-        // ✅ ADDED: Fetch permissions
-        const { data: rolesData, error: rolesError } = await supabase
-          .from("UserRole")
-          .select("*")
-          .ilike("role", session.role);
-
-        if (!rolesError && rolesData?.[0]) {
-          const { data: permsData, error: permsError } = await supabase
-            .from("Role_Permission")
-            .select("page, has_access")
-            .eq("role_id", rolesData[0].role_id);
-
-          if (!permsError) {
-            const permsObj = {};
-            permsData?.forEach(perm => {
-              if (perm.has_access) {
-                permsObj[perm.page] = true;
-              }
-            });
-            setPermissions(permsObj);
-
-            // ✅ Set default page based on permissions
-            const savedPage = localStorage.getItem("currentPage");
-            
-            // Map permission names to page codes
-            const permissionToPageMap = {
-              'Manager Dashboard': 'ManagerDashboard',
-              'Customer Dashboard': 'CustomerDashboard',
-              'FrontDesk Dashboard': 'frontDeskDashboard',
-              'Revenue Dashboard': 'MarketingDashboard',
-            };
-
-            // Find first accessible dashboard
-            let defaultPage = 'dashboard';
-            for (const [permName, pageCode] of Object.entries(permissionToPageMap)) {
-              if (permsObj[permName]) {
-                defaultPage = pageCode;
-                break;
-              }
-            }
-
-            // Use saved page if exists and has access, otherwise use default
-            if (savedPage && hasPageAccess(savedPage, permsObj)) {
-              setCurrentPage(savedPage);
-            } else {
-              setCurrentPage(defaultPage);
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Error parsing session:", error);
-        localStorage.removeItem("userSession");
-      }
-    };
-    loadSession();
-  }, []);
-
-  // ✅ FIXED: Helper function to check page access
-  const hasPageAccess = (page, perms = permissions) => {
-    // Map page codes to permission names
-    const pagePermissionMap = {
-      'ManagerDashboard': 'Manager Dashboard',
-      'MarketingDashboard': 'Revenue Dashboard',
-      'CustomerDashboard': 'Customer Dashboard',
-      'frontDeskDashboard': 'FrontDesk Dashboard',
-      'CustomerReservation': 'Reservation (Customer)',
-      'ReservationFrontDesk': 'Reservation (Front Desk)',
-      'QRCheckInPage': 'QR Check-In',
-      'finalize': 'Finalize Payment',
-      'calendar': 'Calendar',
-      'profile': 'Profile',
-      'CancelBookings': 'Cancel Bookings',
-      'history': 'History',
-      'UserManagement': 'User Management',
-      'Reference': 'Reference',
-      'auditTrail': 'Audit Trail',
-      'Payment': 'Payment',
-    };
-
-    const permissionName = pagePermissionMap[page];
-    
-    // If no permission name mapping, allow access (backwards compatibility)
-    if (!permissionName) return true;
-    
-    // Check if user has permission
-    return perms[permissionName] === true;
-  };
 
   // Notifications useEffect
   useEffect(() => {
@@ -312,6 +404,8 @@ function App() {
 
       if (!error) {
         setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+      } else {
+        console.error("Error marking notification as read:", error);
       }
     } catch (error) {
       console.error("Error updating notification:", error);
@@ -329,6 +423,8 @@ function App() {
 
       if (!error) {
         setNotifications([]);
+      } else {
+        console.error("Error marking all as read:", error);
       }
     } catch (error) {
       console.error("Error updating notifications:", error);
@@ -340,6 +436,7 @@ function App() {
     setIsLoggedIn(true);
 
     setTimeout(() => {
+      // Using INTERNAL page names
       switch (sessionData.role) {
         case 'customer':
           setCurrentPage('CustomerDashboard');
@@ -352,7 +449,7 @@ function App() {
           break;
         case 'admin':
         case 'superadmin':
-          setCurrentPage('ManagerDashboard');
+          setCurrentPage('dashboard');
           break;
         default:
           setCurrentPage('dashboard');
@@ -364,16 +461,54 @@ function App() {
     setIsLoggedIn(false);
     setUserRole(null);
     setUserProfile({ name: "", email: "", role: "", profilePicture: "" });
-    setPermissions({});
     setCurrentPage("dashboard");
     localStorage.removeItem("userSession");
-    localStorage.removeItem("currentPage");
+  };
+
+  // ✅ FIXED: Check access using INTERNAL page names
+  const hasAccess = (page) => {
+    console.log(`🔍 Checking access for page: ${page}`);
+    console.log(`📋 Current permissions:`, permissions);
+    
+    // Admin has access to everything
+    if (userRole === "admin" || userRole === "superadmin") {
+      console.log("✅ Admin bypass - access granted");
+      return true;
+    }
+
+    // Check permissions using internal page name
+    if (permissions[page] !== undefined) {
+      console.log(`✅ Permission found: ${page} = ${permissions[page]}`);
+      return permissions[page] === true;
+    }
+
+    // Common pages accessible by all (fallback)
+    const commonPages = ["calendar", "profile", "history", "CancelBookings"];
+    const hasCommonAccess = commonPages.includes(page);
+    console.log(`🔍 Common page check: ${page} = ${hasCommonAccess}`);
+    return hasCommonAccess;
   };
 
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [adminNotificationOpen, setAdminNotificationOpen] = useState(false);
 
-  // Admin Notifications from Reservation Table
+  const NotFoundPage = () => (
+    <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="text-center">
+        <h1 className="text-6xl font-bold text-gray-300 mb-4">403</h1>
+        <h2 className="text-2xl font-semibold text-gray-700 mb-2">Access Denied</h2>
+        <p className="text-gray-500 mb-6">You don't have permission to access this page.</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Refresh Page
+        </button>
+      </div>
+    </div>
+  );
+
+  // Admin Notifications
   useEffect(() => {
     if (userRole !== 'admin' && userRole !== 'superadmin') return;
 
@@ -432,53 +567,6 @@ function App() {
           }
         }
       )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "reservation" },
-        (payload) => {
-          const updatedRes = payload.new;
-
-          if (updatedRes.Notification === null || updatedRes.Notification === false) {
-            setAdminNotifications((prev) => {
-              const exists = prev.find(n => n.id === updatedRes.id);
-
-              if (!exists) {
-                return [
-                  {
-                    id: updatedRes.id,
-                    accountId: updatedRes.account_id,
-                    tableId: updatedRes.table_id,
-                    date: updatedRes.reservation_date,
-                    startTime: updatedRes.start_time,
-                    duration: updatedRes.duration,
-                    status: updatedRes.status,
-                    totalBill: updatedRes.total_bill,
-                    paymentType: updatedRes.payment_type,
-                    billiardType: updatedRes.billiard_type,
-                    timestamp: updatedRes.created_at,
-                  },
-                  ...prev,
-                ];
-              } else {
-                return prev.map(n =>
-                  n.id === updatedRes.id
-                    ? {
-                      ...n,
-                      status: updatedRes.status,
-                      totalBill: updatedRes.total_bill,
-                      paymentType: updatedRes.payment_type,
-                      duration: updatedRes.duration,
-                      startTime: updatedRes.start_time,
-                    }
-                    : n
-                );
-              }
-            });
-          } else if (updatedRes.Notification === true) {
-            setAdminNotifications((prev) => prev.filter(n => n.id !== updatedRes.id));
-          }
-        }
-      )
       .subscribe();
 
     return () => {
@@ -518,51 +606,76 @@ function App() {
     }
   };
 
-  // ✅ FIXED: Render page with permission check
+  // ✅ FIXED: Render page using INTERNAL page names
   const renderPage = () => {
-    // Check if user has access to current page
-    if (!hasPageAccess(currentPage)) {
-      // Find first accessible page
-      const pagePermissionMap = {
-        'Manager Dashboard': 'ManagerDashboard',
-        'Customer Dashboard': 'CustomerDashboard',
-        'FrontDesk Dashboard': 'frontDeskDashboard',
-        'Revenue Dashboard': 'MarketingDashboard',
+    console.log("🎯 Rendering page:", currentPage);
+    console.log("🔐 Has access:", hasAccess(currentPage));
+    
+    // Check access before rendering
+    if (!hasAccess(currentPage)) {
+      const defaultPages = {
+        customer: 'CustomerDashboard',
+        frontdesk: 'frontDeskDashboard',
+        manager: 'ManagerDashboard',
+        admin: 'dashboard',
+        superadmin: 'dashboard'
       };
 
-      for (const [permName, pageCode] of Object.entries(pagePermissionMap)) {
-        if (permissions[permName]) {
-          setTimeout(() => setCurrentPage(pageCode), 0);
-          return null;
-        }
-      }
+      const defaultPage = defaultPages[userRole] || 'dashboard';
+
+      setTimeout(() => setCurrentPage(defaultPage), 0);
+
+      return (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <p className="text-gray-600">Redirecting to your dashboard...</p>
+          </div>
+        </div>
+      );
     }
 
+    if (isLoggedIn && noPermissionsData) {
+      return <NotFoundPage />;
+    }
+
+    // ✅ FIXED: Use INTERNAL page names (no spaces)
     const pages = {
-      dashboard: <Dashboard />,
-      reservation: <Reservation />,
-      history: <History />,
-      calendar: <ReservationCalendar />,
-      approvals: <Approvals />,
-      auditTrail: <AuditTrail />,
-      Reference: <Reference />,
-      frontDeskDashboard: <FrontDeskDashboard />,
-      CustomerDashboard: <CustomerDashboard />,
-      QRCheckInPage: <QRCheckInPage />,
-      ReservationFrontDesk: <ReservationFrontDesk />,
-      CustomerReservation: <CustomerReservation />,
-      Payment: <Payment />,
-      finalize: <FinalizePayment />,
-      UserManagement: <UserManagement />,
-      ManagerDashboard: <ManagerDashboard />,
-      profile: <ViewProfile />,
-      homeDashboardUpload: <HomeDashboardUpload />,
-      MarketingDashboard: <MarketingDashboard />,
-      ResetPassword: <ResetPassword />,
-      CancelBookings: <CancelBookings />,
+      // Dashboards
+      "dashboard": <Dashboard />,
+      "ManagerDashboard": <ManagerDashboard />,
+      "CustomerDashboard": <CustomerDashboard />,
+      "frontDeskDashboard": <FrontDeskDashboard />,
+      "MarketingDashboard": <MarketingDashboard />,
+      
+      // Reservations
+      "Reservation": <Reservation />,
+      "CustomerReservation": <CustomerReservation />,
+      "ReservationFrontDesk": <ReservationFrontDesk />,
+      
+      // Other pages
+      "QRCheckInPage": <QRCheckInPage />,
+      "finalize": <FinalizePayment />,
+      "calendar": <ReservationCalendar />,
+      "history": <History />,
+      "UserManagement": <UserManagement />,
+      "Reference": <Reference />,
+      "auditTrail": <AuditTrail />,
+      "profile": <ViewProfile />,
+      "CancelBookings": <CancelBookings />,
+      "Payment": <Payment />,
+      "ResetPassword": <ResetPassword />,
+      "homeDashboardUpload": <HomeDashboardUpload />,
     };
 
-    return pages[currentPage] || <Dashboard />;
+    const PageComponent = pages[currentPage];
+    
+    if (PageComponent) {
+      console.log("✅ Rendering component for:", currentPage);
+      return PageComponent;
+    } else {
+      console.error("❌ No component found for page:", currentPage);
+      return <Dashboard />;
+    }
   };
 
   const [isResetPasswordPage, setIsResetPasswordPage] = useState(false);
@@ -593,7 +706,6 @@ function App() {
       </>
     );
   }
-
   return (
     <div className="flex h-screen bg-white">
       <Sidebar
@@ -626,8 +738,10 @@ function App() {
                   )}
                 </button>
 
+                {/* Notification Dropdown */}
                 {notificationOpen && (
                   <div className="absolute right-0 mt-3 w-96 bg-white/95 backdrop-blur-xl border border-blue-100 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
+                    {/* Header */}
                     <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-4">
                       <div className="flex items-center justify-between">
                         <h3 className="text-white font-semibold text-base flex items-center gap-2">
@@ -642,6 +756,7 @@ function App() {
                       </div>
                     </div>
 
+                    {/* Notification List */}
                     <div className="max-h-96 overflow-y-auto">
                       {notifications.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 px-4">
@@ -658,8 +773,10 @@ function App() {
                               key={note.id}
                               onClick={() => handleNotificationClick(note.id)}
                               className="px-4 py-3.5 hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent cursor-pointer transition-all duration-200 group"
+                              style={{ animationDelay: `${index * 50}ms` }}
                             >
                               <div className="flex items-start gap-3">
+                                {/* Icon */}
                                 <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200">
                                   <span className="text-white text-sm font-bold">
                                     {note.activityType === 'extension' ? '⏱️' :
@@ -670,11 +787,13 @@ function App() {
                                   </span>
                                 </div>
 
+                                {/* Content */}
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm text-gray-800 font-medium leading-relaxed">
                                     {note.message}
                                   </p>
 
+                                  {/* Status, Extension, Duration Display */}
                                   <div className="flex flex-wrap items-center gap-2 mt-2">
                                     {note.status && (
                                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
@@ -706,6 +825,7 @@ function App() {
                                   </div>
                                 </div>
 
+                                {/* Dot indicator */}
                                 <div className="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full mt-2 group-hover:scale-125 transition-transform"></div>
                               </div>
                             </div>
@@ -714,6 +834,7 @@ function App() {
                       )}
                     </div>
 
+                    {/* Footer */}
                     {notifications.length > 0 && (
                       <div className="bg-gradient-to-r from-blue-50 to-transparent px-5 py-3 border-t border-blue-100">
                         <button
@@ -745,8 +866,10 @@ function App() {
                   )}
                 </button>
 
+                {/* Admin Notification Dropdown */}
                 {adminNotificationOpen && (
                   <div className="absolute right-0 mt-3 w-96 bg-white/95 backdrop-blur-xl border border-green-100 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
+                    {/* Header */}
                     <div className="bg-gradient-to-r from-green-500 to-green-600 px-5 py-4">
                       <div className="flex items-center justify-between">
                         <h3 className="text-white font-semibold text-base flex items-center gap-2">
@@ -761,10 +884,11 @@ function App() {
                       </div>
                     </div>
 
+                    {/* Notification List */}
                     <div className="max-h-96 overflow-y-auto">
                       {adminNotifications.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 px-4">
-                          <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green -50 rounded-full flex items-center justify-center mb-3">
+                          <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green-50 rounded-full flex items-center justify-center mb-3">
                             <Bell size={28} className="text-green-400" />
                           </div>
                           <p className="text-gray-500 text-sm font-medium">No new reservations</p>
@@ -777,17 +901,21 @@ function App() {
                               key={note.id}
                               onClick={() => handleAdminNotificationClick(note.id)}
                               className="px-4 py-3.5 hover:bg-gradient-to-r hover:from-green-50 hover:to-transparent cursor-pointer transition-all duration-200 group"
+                              style={{ animationDelay: `${index * 50}ms` }}
                             >
                               <div className="flex items-start gap-3">
+                                {/* Icon */}
                                 <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200">
                                   <span className="text-white text-sm font-bold">🎱</span>
                                 </div>
 
+                                {/* Content */}
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm text-gray-800 font-medium leading-relaxed">
                                     New reservation from Account #{note.accountId}
                                   </p>
 
+                                  {/* Reservation Details */}
                                   <div className="flex flex-wrap items-center gap-2 mt-2">
                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
                                       📅 {new Date(note.date).toLocaleDateString()}
@@ -802,17 +930,17 @@ function App() {
                                     </span>
 
                                     {note.status && (
-                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                        note.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${note.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
                                         note.status === 'confirmed' ? 'bg-green-100 text-green-700' :
-                                        note.status === 'cancelled' ? 'bg-red-100 text-red-700' :
-                                        'bg-gray-100 text-gray-700'
-                                      }`}>
+                                          note.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                                            'bg-gray-100 text-gray-700'
+                                        }`}>
                                         📋 {note.status}
                                       </span>
                                     )}
                                   </div>
 
+                                  {/* Additional Info */}
                                   <div className="flex items-center gap-2 mt-2 text-xs text-gray-600">
                                     {note.billiardType && (
                                       <span>🎱 {note.billiardType}</span>
@@ -836,6 +964,7 @@ function App() {
                                   </div>
                                 </div>
 
+                                {/* Dot indicator */}
                                 <div className="flex-shrink-0 w-2 h-2 bg-green-500 rounded-full mt-2 group-hover:scale-125 transition-transform"></div>
                               </div>
                             </div>
@@ -844,6 +973,7 @@ function App() {
                       )}
                     </div>
 
+                    {/* Footer */}
                     {adminNotifications.length > 0 && (
                       <div className="bg-gradient-to-r from-green-50 to-transparent px-5 py-3 border-t border-green-100">
                         <button
@@ -889,12 +1019,14 @@ function App() {
 
                   <ChevronDown
                     size={16}
-                    className={`text-gray-500 transition-transform duration-200 ${profileMenuOpen ? "rotate-180" : ""}`}
+                    className={`text-gray-500 transition-transform duration-200 ${profileMenuOpen ? "rotate-180" : ""
+                      }`}
                   />
                 </button>
 
                 {profileMenuOpen && (
                   <div className="absolute right-0 mt-3 w-72 bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
+                    {/* Profile Header with Gradient */}
                     <div className="relative bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 px-6 py-8">
                       <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
                       <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
@@ -924,6 +1056,7 @@ function App() {
                       </div>
                     </div>
 
+                    {/* Menu Items */}
                     <div className="p-2">
                       <button
                         onClick={() => {
@@ -943,6 +1076,7 @@ function App() {
 
                       <button
                         onClick={() => {
+                          // Add settings functionality here
                           setProfileMenuOpen(false);
                         }}
                         className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent rounded-xl transition-all duration-200 group"
@@ -957,6 +1091,7 @@ function App() {
                       </button>
                     </div>
 
+                    {/* Logout Button */}
                     <div className="p-2 border-t border-gray-100">
                       <button
                         onClick={handleLogout}
