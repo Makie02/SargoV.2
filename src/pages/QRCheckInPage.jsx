@@ -230,90 +230,50 @@ const handleSearch = async (query = searchQuery) => {
     const found = reservations.find(r => r.reservation_no === searchTerm);
     
     if (!found) {
-      return Swal.fire("Not Found", "Reservation does not exist.", "error");
-    }
-
-    // Check if status is completed, rescheduled, or ongoing
-    if (found.status === "completed") {
-      const result = await Swal.fire({
-        icon: 'info',
-        title: 'Reservation Completed',
-        text: 'This reservation has already been completed.',
-        showCancelButton: true,
-        confirmButtonText: 'View Details',
-        cancelButtonText: 'Close',
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#6b7280'
-      });
-
-      if (result.isConfirmed) {
-        setSelectedReservation(found);
-        setShowSuggestions(false);
-      }
-      return;
-    }
-
-    if (found.status === "rescheduled") {
-      const result = await Swal.fire({
-        icon: 'info',
-        title: 'Reservation Rescheduled',
-        text: 'This reservation has been rescheduled.',
-        showCancelButton: true,
-        confirmButtonText: 'View Details',
-        cancelButtonText: 'Close',
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#6b7280'
-      });
-
-      if (result.isConfirmed) {
-        setSelectedReservation(found);
-        setShowSuggestions(false);
-      }
-      return;
-    }
-
-    if (found.status === "ongoing") {
-      const result = await Swal.fire({
-        icon: 'info',
-        title: 'Reservation Ongoing',
-        text: 'This reservation is currently ongoing.',
-        showCancelButton: true,
-        confirmButtonText: 'View Details',
-        cancelButtonText: 'Close',
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#6b7280'
-      });
-
-      if (result.isConfirmed) {
-        setSelectedReservation(found);
-        setShowSuggestions(false);
-      }
-      return;
-    }
-
-    if (found.status !== "pending" && found.status !== "approved") {
+      // Instead of showing "Not Found", show verification dialog
       const result = await Swal.fire({
         icon: 'warning',
-        title: 'Invalid Status',
-        text: `Reservation status: ${found.status}`,
+        title: 'Double Check Required',
+        html: `
+          <div style="text-align: left;">
+            <p style="margin-bottom: 15px;">Reservation number not found in the system.</p>
+            <p style="margin-bottom: 10px;"><strong>Scanned/Entered:</strong></p>
+            <div style="padding: 12px; background-color: #f3f4f6; border-radius: 8px; border-left: 4px solid #ef4444; margin-bottom: 15px;">
+              <code style="font-size: 16px; font-weight: 600; color: #1f2937;">${searchTerm}</code>
+            </div>
+            <p style="margin-bottom: 10px; font-size: 14px; color: #6b7280;">
+              Please verify:
+            </p>
+            <ul style="margin-left: 20px; margin-bottom: 15px; font-size: 14px; color: #6b7280;">
+              <li>The reservation number is correct</li>
+              <li>The reservation exists in the system</li>
+              <li>There are no typos in the number</li>
+            </ul>
+          </div>
+        `,
+        input: 'text',
+        inputLabel: 'Re-type or correct the Reservation Number',
+        inputValue: searchTerm,
+        inputPlaceholder: 'Enter reservation number',
         showCancelButton: true,
-        confirmButtonText: 'View Details',
-        cancelButtonText: 'Close',
+        confirmButtonText: '<span style="display: flex; align-items: center; gap: 6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Verify</span>',
+        cancelButtonText: 'Cancel',
         confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#6b7280'
+        cancelButtonColor: '#6b7280',
+        inputValidator: (value) => {
+          if (!value) {
+            return 'Please enter a reservation number';
+          }
+        }
       });
 
-      if (result.isConfirmed) {
-        setSelectedReservation(found);
-        setShowSuggestions(false);
+      if (result.isConfirmed && result.value) {
+        // Recursively search with the new value
+        setSearchQuery(result.value);
+        return handleSearch(result.value);
       }
       return;
     }
-
-    // If pending or approved, show directly without Swal
-    setSelectedReservation(found);
-    setShowSuggestions(false);
-  };
   const handleSuggestionClick = (reservation) => {
     setSearchQuery(reservation.reservation_no);
     setShowSuggestions(false);
