@@ -58,7 +58,7 @@ function App() {
     'User Management': 'UserManagement',
     'Reference': 'Reference',
     'Audit Trail': 'auditTrail',
-    'Profile': 'profile',
+    'Profile': 'Profile',
     'CancelBookings': 'CancelBookings',
   };
 
@@ -146,7 +146,7 @@ function App() {
             "UserManagement": true,
             "Reference": true,
             "auditTrail": true,
-            "profile": true,
+            "Profile": true,
             "CancelBookings": true,
           };
           setPermissions(allPermissions);
@@ -660,7 +660,7 @@ function App() {
       "UserManagement": <UserManagement />,
       "Reference": <Reference />,
       "auditTrail": <AuditTrail />,
-      "profile": <ViewProfile />,
+      "Profile": <ViewProfile />,
       "CancelBookings": <CancelBookings />,
       "Payment": <Payment />,
       "ResetPassword": <ResetPassword />,
@@ -1060,7 +1060,7 @@ function App() {
                     <div className="p-2">
                       <button
                         onClick={() => {
-                          setCurrentPage('profile');
+                          setCurrentPage('Profile');
                           setProfileMenuOpen(false);
                         }}
                         className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent rounded-xl transition-all duration-200 group"
