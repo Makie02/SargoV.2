@@ -99,7 +99,8 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
 
       await supabase.from("system_log").insert({
         account_id: accountData.account_id,
-        action: "User login",
+        action: `${accountData.role.charAt(0).toUpperCase() + accountData.role.slice(1)} login`,
+
       });
 
       Swal.fire({
@@ -136,19 +137,19 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="relative w-full max-w-md p-8 mx-4 bg-white rounded-lg">
         <button
           onClick={handleClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+          className="absolute text-gray-400 top-4 right-4 hover:text-gray-600"
         >
           <X size={24} />
         </button>
 
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Log In</h2>
+        <h2 className="mb-4 text-2xl font-bold text-gray-900">Log In</h2>
 
         <div className="mb-4">
-          <label className="block text-gray-700 text-sm font-medium mb-2">
+          <label className="block mb-2 text-sm font-medium text-gray-700">
             Email
           </label>
           <input
@@ -162,7 +163,7 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
         </div>
 
         <div className="mb-2">
-          <label className="block text-gray-700 text-sm font-medium mb-2">
+          <label className="block mb-2 text-sm font-medium text-gray-700">
             Password
           </label>
           <div className="relative">
@@ -177,7 +178,7 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              className="absolute text-gray-400 -translate-y-1/2 right-3 top-1/2 hover:text-gray-600"
             >
               {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
@@ -191,7 +192,7 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
               handleClose();
               onSwitchToForgotPassword();
             }}
-            className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+            className="text-sm font-medium text-purple-600 hover:text-purple-700"
           >
             Forgot Password?
           </button>
@@ -200,19 +201,19 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
         <button
           onClick={handleLogin}
           disabled={loading}
-          className="w-full bg-gray-900 text-white py-2 rounded-lg font-medium hover:bg-gray-800 transition disabled:opacity-50"
+          className="w-full py-2 font-medium text-white transition bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50"
         >
           {loading ? "Logging in..." : "Log In"}
         </button>
 
-        <p className="text-center text-sm text-gray-600 mt-4">
+        <p className="mt-4 text-sm text-center text-gray-600">
           Don't have an account?{" "}
           <button
             onClick={() => {
               handleClose();
               onSwitchToRegister();
             }}
-            className="text-purple-600 hover:text-purple-700 font-semibold"
+            className="font-semibold text-purple-600 hover:text-purple-700"
           >
             Register here
           </button>
