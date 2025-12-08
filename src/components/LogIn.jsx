@@ -76,6 +76,37 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
         throw new Error("Invalid email or password.");
       }
 
+      // CHECK KUNG NAKA-DEACTIVATE ANG USER
+      const { data: deactData, error: deactError } = await supabase
+        .from("deact_user")
+        .select("deact_id, deactivated_until, reason, status")
+        .eq("account_id", accountData.account_id)
+        .eq("status", "deactivated")
+        .order("deactivation_date", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (deactData) {
+        const deactivatedUntil = new Date(deactData.deactivated_until);
+        const now = new Date();
+
+        // Check kung active pa yung deactivation
+        if (now < deactivatedUntil) {
+          const options = { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          };
+          const formattedDate = deactivatedUntil.toLocaleString('en-US', options);
+
+          throw new Error(
+            `Your account is currently deactivated until ${formattedDate}. Reason: ${deactData.reason || 'Account suspended'}`
+          );
+        }
+      }
+
       let fullName = email;
       if (accountData.role === "customer") {
         const { data: customerData } = await supabase
@@ -100,7 +131,6 @@ function Login({ isOpen, onClose, onLoginSuccess, onSwitchToRegister, onSwitchTo
       await supabase.from("system_log").insert({
         account_id: accountData.account_id,
         action: `${accountData.role.charAt(0).toUpperCase() + accountData.role.slice(1)} login`,
-
       });
 
       Swal.fire({
