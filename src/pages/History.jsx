@@ -199,7 +199,7 @@ const History = () => {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+          <div className="w-16 h-16 mx-auto border-4 border-blue-200 rounded-full border-t-blue-600 animate-spin"></div>
           <p className="mt-4 text-lg font-semibold text-gray-700">Loading...</p>
         </div>
       </div>
@@ -208,26 +208,26 @@ const History = () => {
 
   return (
     <div className="min-h-screen p-4 md:p-6 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-      <div className="max-w-7xl mx-auto">
+      <div className="mx-auto max-w-7xl">
         {/* Header - Compact */}
-        <div className="backdrop-blur-xl bg-white/70 border border-white/40 rounded-2xl shadow-lg p-4 md:p-6 mb-4">
-          <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent text-center">
+        <div className="p-4 mb-4 border shadow-lg backdrop-blur-xl bg-white/70 border-white/40 rounded-2xl md:p-6">
+          <h1 className="text-2xl font-bold text-center text-transparent md:text-3xl bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text">
             Transaction History
           </h1>
         </div>
 
         {/* Filters - Compact */}
-        <div className="backdrop-blur-xl bg-white/70 border border-white/40 rounded-2xl shadow-lg p-4 mb-4">
+        <div className="p-4 mb-4 border shadow-lg backdrop-blur-xl bg-white/70 border-white/40 rounded-2xl">
           <div className="flex items-center gap-2 mb-3">
             <Filter className="w-4 h-4 text-blue-600" />
             <h3 className="text-sm font-semibold text-gray-800">Filters</h3>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="px-3 py-2 text-sm bg-white/80 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 text-sm border border-blue-200 bg-white/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Months</option>
               {getUniqueMonths().map(month => (
@@ -238,7 +238,7 @@ const History = () => {
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3 py-2 text-sm bg-white/80 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 text-sm border border-blue-200 bg-white/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
@@ -252,10 +252,10 @@ const History = () => {
         </div>
 
         {/* Transactions Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 gap-4 mb-4 md:grid-cols-2 lg:grid-cols-3">
           {currentTransactions.length === 0 ? (
-            <div className="col-span-full backdrop-blur-xl bg-white/70 border border-white/40 rounded-2xl shadow-lg p-12 text-center">
-              <Calendar className="w-12 h-12 text-blue-600 mx-auto mb-3" />
+            <div className="p-12 text-center border shadow-lg col-span-full backdrop-blur-xl bg-white/70 border-white/40 rounded-2xl">
+              <Calendar className="w-12 h-12 mx-auto mb-3 text-blue-600" />
               <p className="text-lg font-semibold text-gray-600">No transactions found</p>
             </div>
           ) : (
@@ -263,28 +263,28 @@ const History = () => {
               <div
                 key={transaction.id}
                 onClick={() => handleViewDetails(transaction)}
-                className="backdrop-blur-xl bg-gradient-to-br from-white/80 to-blue-50/50 border border-white/40 rounded-2xl shadow-lg p-4 hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer"
+                className="p-4 transition-all duration-300 border shadow-lg cursor-pointer backdrop-blur-xl bg-gradient-to-br from-white/80 to-blue-50/50 border-white/40 rounded-2xl hover:shadow-xl hover:scale-105"
               >
                 {/* Date */}
-                <div className="flex items-center gap-2 text-xs text-gray-600 mb-3">
+                <div className="flex items-center gap-2 mb-3 text-xs text-gray-600">
                   <Calendar className="w-3 h-3" />
                   <span>{formatDate(transaction.created_at)}</span>
                 </div>
 
                 {/* Table Name */}
-                <h3 className="text-lg font-bold text-gray-800 mb-2">
+                <h3 className="mb-2 text-lg font-bold text-gray-800">
                   {getTableName(transaction.table_id)}
                 </h3>
 
                 {/* Billiard Type */}
                 <div className="mb-3">
-                  <span className="inline-block px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold">
+                  <span className="inline-block px-3 py-1 text-xs font-semibold text-blue-700 bg-blue-100 rounded-lg">
                     {transaction.billiard_type || 'Standard'}
                   </span>
                 </div>
 
                 {/* Time Info */}
-                <div className="flex items-center gap-2 text-xs text-gray-600 mb-4">
+                <div className="flex items-center gap-2 mb-4 text-xs text-gray-600">
                   <Clock className="w-3 h-3" />
                   <span>{transaction.duration}h • {transaction.start_time} - {transaction.time_end}</span>
                 </div>
@@ -310,7 +310,7 @@ const History = () => {
 
         {/* Pagination */}
         {filteredTransactions.length > 0 && (
-          <div className="backdrop-blur-xl bg-white/70 border border-white/40 rounded-2xl shadow-lg p-4">
+          <div className="p-4 border shadow-lg backdrop-blur-xl bg-white/70 border-white/40 rounded-2xl">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-600">
                 Showing {startIndex + 1} to {Math.min(endIndex, filteredTransactions.length)} of {filteredTransactions.length} transactions
@@ -320,7 +320,7 @@ const History = () => {
                 <button
                   onClick={() => goToPage(currentPage - 1)}
                   disabled={currentPage === 1}
-                  className="p-2 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="p-2 text-blue-600 transition-all bg-blue-100 rounded-lg hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
@@ -344,7 +344,7 @@ const History = () => {
                 <button
                   onClick={() => goToPage(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  className="p-2 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="p-2 text-blue-600 transition-all bg-blue-100 rounded-lg hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>
@@ -359,15 +359,15 @@ const History = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
             {/* Modal Header */}
-            <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 rounded-t-3xl">
+            <div className="sticky top-0 p-6 text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-3xl">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-bold">Transaction Details</h2>
-                  <p className="text-sm text-blue-100 mt-1">Transaction ID: #{selectedTransaction.id}</p>
+                  <p className="mt-1 text-sm text-blue-100">Transaction ID: #{selectedTransaction.id}</p>
                 </div>
                 <button
                   onClick={closeDetailsModal}
-                  className="p-2 hover:bg-white/20 rounded-full transition-all"
+                  className="p-2 transition-all rounded-full hover:bg-white/20"
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -375,25 +375,16 @@ const History = () => {
             </div>
 
             {/* Modal Content */}
-            <div className="p-6 space-y-6">
-              {/* Status Badge */}
-              <div className="flex justify-center">
-                <div className={`${getStatusStyle(selectedTransaction.status)} px-6 py-3 rounded-full`}>
-                  <span className="text-lg font-bold text-white uppercase">
-                    {selectedTransaction.status || 'N/A'}
-                  </span>
-                </div>
-              </div>
-
+            <div className="p-3 space-y-6">
               {/* Table Information */}
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6">
-                <h3 className="text-lg font-bold text-gray-800 mb-4">Table Information</h3>
+              <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl">
+                <h3 className="mb-4 text-lg font-bold text-gray-800">Table Information</h3>
                 <div className="space-y-3">
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center justify-between">
                     <span className="text-gray-600">Table Name:</span>
                     <span className="font-semibold text-gray-800">{getTableName(selectedTransaction.table_id)}</span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center justify-between">
                     <span className="text-gray-600">Billiard Type:</span>
                     <span className="font-semibold text-gray-800">{selectedTransaction.billiard_type || 'Standard'}</span>
                   </div>
@@ -401,36 +392,36 @@ const History = () => {
               </div>
 
               {/* Date & Time Information */}
-              <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6">
-                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <div className="p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl">
+                <h3 className="flex items-center gap-2 mb-4 text-lg font-bold text-gray-800">
                   <Calendar className="w-5 h-5" />
                   Date & Time
                 </h3>
                 <div className="space-y-3">
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center justify-between">
                     <span className="text-gray-600">Transaction Date:</span>
                     <span className="font-semibold text-gray-800">{formatDate(selectedTransaction.created_at)}</span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center justify-between">
                     <span className="text-gray-600">Reservation Date:</span>
                     <span className="font-semibold text-gray-800">
                       {selectedTransaction.reservation_date ? formatFullDate(selectedTransaction.reservation_date) : 'N/A'}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center justify-between">
                     <span className="text-gray-600">Start Time:</span>
                     <span className="font-semibold text-gray-800">{selectedTransaction.start_time || 'N/A'}</span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center justify-between">
                     <span className="text-gray-600">End Time:</span>
                     <span className="font-semibold text-gray-800">{selectedTransaction.time_end || 'N/A'}</span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center justify-between">
                     <span className="text-gray-600">Duration:</span>
                     <span className="font-semibold text-gray-800">{selectedTransaction.duration || 0} hour{selectedTransaction.duration > 1 ? 's' : ''}</span>
                   </div>
                   {selectedTransaction.extension > 0 && (
-                    <div className="flex justify-between items-center">
+                    <div className="flex items-center justify-between">
                       <span className="text-gray-600">Extension:</span>
                       <span className="font-semibold text-orange-600">+{selectedTransaction.extension} hour{selectedTransaction.extension > 1 ? 's' : ''}</span>
                     </div>
@@ -439,13 +430,13 @@ const History = () => {
               </div>
 
               {/* Payment Information */}
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6">
-                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <div className="p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl">
+                <h3 className="flex items-center gap-2 mb-4 text-lg font-bold text-gray-800">
                   <CreditCard className="w-5 h-5" />
                   Payment Information
                 </h3>
                 <div className="space-y-3">
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center justify-between">
                     <span className="text-gray-600">Payment Method:</span>
                     <span className="font-semibold text-gray-800 capitalize">
                       {selectedTransaction.paymentMethod === 'full' ? 'Paid in Full' : 
@@ -453,7 +444,7 @@ const History = () => {
                        selectedTransaction.paymentMethod || 'N/A'}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center pt-3 border-t border-green-200">
+                  <div className="flex items-center justify-between pt-3 border-t border-green-200">
                     <span className="text-lg font-semibold text-gray-800">Total Amount:</span>
                     <span className="text-2xl font-bold text-green-600">
                       ₱{parseFloat(selectedTransaction.amount || 0).toFixed(2)}
@@ -464,13 +455,13 @@ const History = () => {
 
               {/* Account Information (if available) */}
               {selectedTransaction.account_id && (
-                <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl p-6">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <div className="p-6 bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl">
+                  <h3 className="flex items-center gap-2 mb-4 text-lg font-bold text-gray-800">
                     <User className="w-5 h-5" />
                     Account Information
                   </h3>
                   <div className="space-y-3">
-                    <div className="flex justify-between items-center">
+                    <div className="flex items-center justify-between">
                       <span className="text-gray-600">Account ID:</span>
                       <span className="font-semibold text-gray-800">#{selectedTransaction.account_id}</span>
                     </div>
@@ -480,10 +471,10 @@ const History = () => {
             </div>
 
             {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-gray-50 p-6 rounded-b-3xl border-t border-gray-200">
+            <div className="sticky bottom-0 p-6 border-t border-gray-200 bg-gray-50 rounded-b-3xl">
               <button
                 onClick={closeDetailsModal}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all"
+                className="w-full py-3 font-semibold text-white transition-all bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl hover:from-blue-700 hover:to-indigo-700"
               >
                 Close
               </button>
