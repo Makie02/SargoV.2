@@ -1,1163 +1,858 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from "../lib/supabaseClient";
+
+import React, { useState, useEffect, useRef } from 'react';
+import { QrCode, CheckCircle, X, AlertCircle, FileImage, FolderOpen, Search } from 'lucide-react';
+import { Html5Qrcode } from 'html5-qrcode';
+import { supabase } from '../lib/supabaseClient';
 import Swal from 'sweetalert2';
-import { Plus, Edit2, Trash2, X, Search, Download, QrCode as QrCodeIcon, Wallet, CreditCard, Filter } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
-const QRCodeManagement = () => {
-  const [qrCodes, setQrCodes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [currentQrCode, setCurrentQrCode] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [filterCategory, setFilterCategory] = useState('all'); // all, gcash, cash, paymaya, etc.
+export default function QRCheckInPage() {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [reservations, setReservations] = useState([]);
+  const [filteredReservations, setFilteredReservations] = useState([]);
+  const [selectedReservation, setSelectedReservation] = useState(null);
+  const [confirmationModal, setConfirmationModal] = useState(false);
+  const [generatedRefNo, setGeneratedRefNo] = useState(null);
+  const [gcashRefNo, setGcashRefNo] = useState('');
+  const [scannerActive, setScannerActive] = useState(false);
+  const [showProofModal, setShowProofModal] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [cameraDevices, setCameraDevices] = useState([]);
+  const [selectedCamera, setSelectedCamera] = useState(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const html5QrCodeRef = useRef(null);
+  const cardRef = useRef(null);
+  const searchRef = useRef(null);
 
-  const [formData, setFormData] = useState({
-    full_name: '',
-    cellphone_number: '',
-    status: true,
-    qr_image: null,
-    payment_category: 'GCash' // Default category
-  });
-
+  // Fetch reservations on load
   useEffect(() => {
-    fetchQRCodes();
+    fetchReservations();
+    checkCameras();
   }, []);
 
- const fetchQRCodes = async () => {
-    try {
-      setLoading(true);
-      console.log('Fetching QR codes from Supabase...');
+  // Real-time search filter
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      const filtered = reservations.filter(r => 
+        r.reservation_no?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredReservations(filtered);
+      setShowSuggestions(filtered.length > 0);
+    } else {
+      setFilteredReservations([]);
+      setShowSuggestions(false);
+    }
+  }, [searchQuery, reservations]);
 
-      const { data, error } = await supabase
-        .from('qr_code')
-        .select('*')
-        .order('generated_at', { ascending: false });
-
-      console.log('Supabase Response:', { data, error });
-
-      if (error) {
-        console.error('Supabase Error:', error);
-        throw error;
+  // Click outside to close suggestions
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setShowSuggestions(false);
       }
-
-      setQrCodes(data || []);
-    } catch (error) {
-      console.error('Error fetching QR codes:', error);
-      Swal.fire({
-        icon: 'warning',
-        title: 'Please Recheck',
-        html: `
-          <p style="font-size: 15px; margin-bottom: 10px;">Unable to load payment methods.</p>
-          <p style="font-size: 14px; color: #666;">Please verify your connection and try again.</p>
-        `,
-        confirmButtonText: 'Retry',
-        confirmButtonColor: '#6f42c1'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
-  };
-
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Invalid File',
-        text: 'Please upload an image file (JPG, PNG, etc.)',
-      });
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      Swal.fire({
-        icon: 'error',
-        title: 'File Too Large',
-        text: 'Please upload an image smaller than 5MB',
-      });
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result;
-      setImagePreview(base64String);
-      setFormData(prev => ({
-        ...prev,
-        qr_image: base64String
-      }));
     };
-    reader.readAsDataURL(file);
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Check available cameras
+  const checkCameras = async () => {
+    try {
+      const devices = await Html5Qrcode.getCameras();
+      setCameraDevices(devices);
+      if (devices && devices.length > 0) {
+        const backCamera = devices.find(d => d.label.toLowerCase().includes('back')) || devices[0];
+        setSelectedCamera(backCamera.id);
+      }
+    } catch (err) {
+      console.error("Error checking cameras:", err);
+    }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!formData.full_name.trim()) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Invalid Input',
-        text: 'Please enter a payment method name',
-      });
-      return;
-    }
-
-    if (!formData.cellphone_number || formData.cellphone_number.length !== 11) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Invalid Cellphone Number',
-        text: 'Please enter a valid 11-digit Philippine mobile number',
-      });
-      return;
-    }
-
-    if (!formData.cellphone_number.startsWith('09')) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Invalid Number Format',
-        text: 'Philippine mobile numbers must start with 09',
-      });
-      return;
-    }
-
-    if (!formData.qr_image) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Missing QR Code',
-        text: 'Please upload a QR code image',
-      });
-      return;
-    }
-
-    try {
-      setUploading(true);
-
-      if (editMode && currentQrCode) {
-        const { error } = await supabase
-          .from('qr_code')
-          .update({
-            full_name: formData.full_name.trim(),
-            cellphone_number: formData.cellphone_number,
-            qr_image: formData.qr_image,
-            status: formData.status,
-            payment_category: formData.payment_category
-          })
-          .eq('qr_id', currentQrCode.qr_id);
-
-        if (error) throw error;
-
-        Swal.fire({
-          icon: 'success',
-          title: 'Updated!',
-          text: 'QR code updated successfully',
-          timer: 1500,
-          showConfirmButton: false,
-        });
-      } else {
-        const existing = qrCodes.find(qr => qr.cellphone_number === formData.cellphone_number);
-        if (existing) {
+  // Handle QR Scanner
+  useEffect(() => {
+    const startScanner = async () => {
+      if (scannerActive && !isScanning) {
+        if (cameraDevices.length === 0) {
           Swal.fire({
-            icon: 'warning',
-            title: 'Duplicate Entry',
-            text: 'This cellphone number already exists',
+            icon: 'error',
+            title: 'No Camera Found',
+            html: `
+              <p>No camera detected on this device.</p>
+              <br>
+              <p><strong>Solutions:</strong></p>
+              <ul style="text-align: left; margin-left: 20px;">
+                <li>Make sure your camera is connected and enabled</li>
+                <li>Check if another app is using the camera</li>
+                <li>Try refreshing the page</li>
+                <li>Use the manual search below instead</li>
+              </ul>
+            `,
+            confirmButtonColor: '#3085d6'
           });
+          setScannerActive(false);
           return;
         }
 
-        const { error } = await supabase
-          .from('qr_code')
-          .insert([{
-            full_name: formData.full_name.trim(),
-            cellphone_number: formData.cellphone_number,
-            qr_image: formData.qr_image,
-            status: formData.status,
-            payment_category: formData.payment_category
-          }]);
+        try {
+          const html5QrCode = new Html5Qrcode("qr-reader");
+          html5QrCodeRef.current = html5QrCode;
 
-        if (error) throw error;
+          const cameraId = selectedCamera || cameraDevices[0].id;
 
-        Swal.fire({
-          icon: 'success',
-          title: 'Success!',
-          text: 'QR code uploaded successfully',
-          timer: 1500,
-          showConfirmButton: false,
-        });
+          await html5QrCode.start(
+            cameraId,
+            {
+              fps: 10,
+              qrbox: { width: 250, height: 250 }
+            },
+            onScanSuccess,
+            onScanError
+          );
+          
+          setIsScanning(true);
+        } catch (err) {
+          console.error("Error starting scanner:", err);
+          
+          let errorMessage = 'Unable to access camera. Please check permissions.';
+          
+          if (err.toString().includes('NotFoundError')) {
+            errorMessage = 'Camera not found. Please make sure your camera is connected and enabled.';
+          } else if (err.toString().includes('NotAllowedError')) {
+            errorMessage = 'Camera access denied. Please allow camera permissions in your browser settings.';
+          } else if (err.toString().includes('NotReadableError')) {
+            errorMessage = 'Camera is already in use by another application. Please close other apps using the camera.';
+          }
+          
+          Swal.fire({
+            icon: 'error',
+            title: 'Camera Error',
+            text: errorMessage,
+            confirmButtonColor: '#3085d6'
+          });
+          setScannerActive(false);
+          setIsScanning(false);
+        }
       }
+    };
 
-      handleCloseModal();
-      fetchQRCodes();
-    } catch (error) {
-      console.error('Error saving QR code:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to save QR code',
-      });
-    } finally {
-      setUploading(false);
+    startScanner();
+
+    return () => {
+      if (html5QrCodeRef.current && isScanning) {
+        html5QrCodeRef.current
+          .stop()
+          .then(() => {
+            html5QrCodeRef.current = null;
+            setIsScanning(false);
+          })
+          .catch(err => {
+            console.error("Error stopping scanner:", err);
+            setIsScanning(false);
+          });
+      }
+    };
+  }, [scannerActive]);
+
+const fetchReservations = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reservation')
+        .select('*');
+        // Remove the .in('status', ['pending', 'approved']) to get all reservations
+
+      if (error) throw error;
+      setReservations(data || []);
+    } catch (err) {
+      console.error('Error fetching reservations:', err);
     }
   };
 
-  const handleEdit = (qrCode) => {
-    setCurrentQrCode(qrCode);
-    setFormData({
-      full_name: qrCode.full_name || '',
-      cellphone_number: qrCode.cellphone_number?.toString() || '',
-      status: qrCode.status ?? true,
-      qr_image: qrCode.qr_image,
-      payment_category: qrCode.payment_category || 'GCash'
-    });
-    setImagePreview(qrCode.qr_image);
-    setEditMode(true);
-    setShowModal(true);
+const onScanSuccess = (decodedText) => {
+    let searchValue = decodedText;
+    
+    // Try to parse as JSON to extract reservationNo
+    try {
+      const parsed = JSON.parse(decodedText);
+      if (parsed.reservationNo) {
+        searchValue = parsed.reservationNo;
+      }
+    } catch (e) {
+      // If not valid JSON, use the raw text
+      searchValue = decodedText;
+    }
+    
+    // Set the search query to the extracted reservation number
+    setSearchQuery(searchValue);
+    // Automatically search using the scanned QR code
+    handleSearch(searchValue);
+    // Stop the scanner after successful scan
+    stopScanner();
+  };
+  const onScanError = (error) => {
+    // Silent - normal scanning errors
   };
 
-  const handleDelete = async (qrId, fullName) => {
-    const result = await Swal.fire({
-      title: 'Are you sure?',
-      text: `Delete QR code for "${fullName}"? This action cannot be undone!`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#dc3545',
-      cancelButtonColor: '#6c757d',
-      confirmButtonText: 'Yes, delete it!'
-    });
+  
 
-    if (result.isConfirmed) {
+  const stopScanner = async () => {
+    if (html5QrCodeRef.current && isScanning) {
+      try {
+        await html5QrCodeRef.current.stop();
+        html5QrCodeRef.current = null;
+        setIsScanning(false);
+        setScannerActive(false);
+      } catch (err) {
+        console.error("Error stopping scanner:", err);
+        setIsScanning(false);
+        setScannerActive(false);
+      }
+    } else {
+      setScannerActive(false);
+      setIsScanning(false);
+    }
+  };
+
+  const toggleScanner = async () => {
+    if (scannerActive) {
+      await stopScanner();
+    } else {
+      setScannerActive(true);
+    }
+  };
+
+const handleSearch = async (query = searchQuery) => {
+    const searchTerm = String(query).trim();
+    if (!searchTerm) return;
+
+    const found = reservations.find(r => r.reservation_no === searchTerm);
+    
+    if (!found) {
+      return Swal.fire("Not Found", "Reservation does not exist.", "error");
+    }
+
+    // Check if status is completed, rescheduled, or ongoing
+    if (found.status === "completed") {
+      const result = await Swal.fire({
+        icon: 'info',
+        title: 'Reservation Completed',
+        text: 'This reservation has already been completed.',
+        showCancelButton: true,
+        confirmButtonText: 'View Details',
+        cancelButtonText: 'Close',
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#6b7280'
+      });
+
+      if (result.isConfirmed) {
+        setSelectedReservation(found);
+        setShowSuggestions(false);
+      }
+      return;
+    }
+
+    if (found.status === "rescheduled") {
+      const result = await Swal.fire({
+        icon: 'info',
+        title: 'Reservation Rescheduled',
+        text: 'This reservation has been rescheduled.',
+        showCancelButton: true,
+        confirmButtonText: 'View Details',
+        cancelButtonText: 'Close',
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#6b7280'
+      });
+
+      if (result.isConfirmed) {
+        setSelectedReservation(found);
+        setShowSuggestions(false);
+      }
+      return;
+    }
+
+    if (found.status === "ongoing") {
+      const result = await Swal.fire({
+        icon: 'info',
+        title: 'Reservation Ongoing',
+        text: 'This reservation is currently ongoing.',
+        showCancelButton: true,
+        confirmButtonText: 'View Details',
+        cancelButtonText: 'Close',
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#6b7280'
+      });
+
+      if (result.isConfirmed) {
+        setSelectedReservation(found);
+        setShowSuggestions(false);
+      }
+      return;
+    }
+
+    if (found.status !== "pending" && found.status !== "approved") {
+      const result = await Swal.fire({
+        icon: 'warning',
+        title: 'Invalid Status',
+        text: `Reservation status: ${found.status}`,
+        showCancelButton: true,
+        confirmButtonText: 'View Details',
+        cancelButtonText: 'Close',
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#6b7280'
+      });
+
+      if (result.isConfirmed) {
+        setSelectedReservation(found);
+        setShowSuggestions(false);
+      }
+      return;
+    }
+
+    // If pending or approved, show directly without Swal
+    setSelectedReservation(found);
+    setShowSuggestions(false);
+  };
+  const handleSuggestionClick = (reservation) => {
+    setSearchQuery(reservation.reservation_no);
+    setShowSuggestions(false);
+    handleSearch(reservation.reservation_no);
+  };
+
+  const handleCheckInClick = () => {
+    const refNo = selectedReservation.paymentMethod === 'Cash' && 
+                  selectedReservation.payment_type === 'Full Payment' 
+                  ? generateReferenceNumber() 
+                  : null;
+    setGeneratedRefNo(refNo);
+    setConfirmationModal(true);
+  };
+
+  const generateReferenceNumber = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hour = String(now.getHours()).padStart(2, '0');
+    const minute = String(now.getMinutes()).padStart(2, '0');
+    const second = String(now.getSeconds()).padStart(2, '0');
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    
+    return `${year}${month}${day}${hour}${minute}${second}${random}`;
+  };
+
+  const handleConfirmCheckIn = async () => {
+    if (!selectedReservation) return;
+
+    const paymentMethod = selectedReservation.paymentMethod;
+    const paymentType = selectedReservation.payment_type;
+
+    if (paymentMethod === 'GCash' && !gcashRefNo.trim()) {
+      return Swal.fire("Error", "Please enter GCash Reference Number", "error");
+    }
+
+    if (paymentMethod === 'Cash' && paymentType === 'Full Payment') {
       try {
         const { error } = await supabase
-          .from('qr_code')
-          .delete()
-          .eq('qr_id', qrId);
+          .from('reservation')
+          .update({ 
+            status: 'pending',
+            payment_status: true,
+            reference_no: generatedRefNo
+          })
+          .eq('id', selectedReservation.id);
 
         if (error) throw error;
 
-        Swal.fire({
+        await Swal.fire({
           icon: 'success',
-          title: 'Deleted!',
-          text: 'QR code has been deleted.',
-          timer: 1500,
-          showConfirmButton: false,
+          title: 'Check-in Successful!',
+          html: `<div style="text-align: left;">
+            <p style="margin-bottom: 10px;">Customer checked in and payment marked as complete.</p>
+            <p style="margin-top: 15px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
+              <strong>Reference No:</strong> ${generatedRefNo}
+            </p>
+          </div>`,
+          timer: 3000,
+          showConfirmButton: false
         });
 
-        fetchQRCodes();
+        fetchReservations();
+        setSelectedReservation(null);
+        setConfirmationModal(false);
+        setGcashRefNo('');
       } catch (error) {
-        console.error('Error deleting QR code:', error);
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: error.message || 'Failed to delete QR code',
+        console.error('Error during check-in:', error);
+        Swal.fire("Error", "Check-in failed. Please try again.", "error");
+      }
+    } else if (paymentMethod === 'GCash') {
+      try {
+        const { error } = await supabase
+          .from('reservation')
+          .update({ 
+            status: 'pending',
+            reference_no: gcashRefNo
+          })
+          .eq('id', selectedReservation.id);
+
+        if (error) throw error;
+
+        await Swal.fire({
+          icon: 'success',
+          title: 'Check-in Successful!',
+          html: `<div style="text-align: left;">
+            <p style="margin-bottom: 10px;">Customer checked in.</p>
+            <p style="margin-top: 15px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
+              <strong>GCash Ref No:</strong> ${gcashRefNo}
+            </p>
+          </div>`,
+          timer: 3000,
+          showConfirmButton: false
         });
+
+        fetchReservations();
+        setSelectedReservation(null);
+        setConfirmationModal(false);
+        setGcashRefNo('');
+      } catch (error) {
+        console.error('Error during check-in:', error);
+        Swal.fire("Error", "Check-in failed. Please try again.", "error");
+      }
+    } else {
+      try {
+        const { error } = await supabase
+          .from('reservation')
+          .update({ status: 'pending' })
+          .eq('id', selectedReservation.id);
+
+        if (error) throw error;
+
+        await Swal.fire({
+          icon: 'success',
+          title: 'Check-in Successful!',
+          text: 'Customer checked in.',
+          timer: 2000,
+          showConfirmButton: false
+        });
+
+        fetchReservations();
+        setSelectedReservation(null);
+        setConfirmationModal(false);
+        setGcashRefNo('');
+      } catch (error) {
+        console.error('Error during check-in:', error);
+        Swal.fire("Error", "Check-in failed. Please try again.", "error");
       }
     }
   };
 
-  const handleDownload = (qrImage, fullName, qrNumber) => {
-    const link = document.createElement('a');
-    link.href = qrImage;
-    link.download = `QR_${qrNumber}_${fullName.replace(/\s+/g, '_')}.png`;
-    document.body.appendChild(link);
+  const saveAsImage = async () => {
+    const card = cardRef.current;
+
+    const canvas = await html2canvas(card, {
+      scale: 4,
+      useCORS: true
+    });
+
+    const maxWidth = 1000;
+    const scaleFactor = maxWidth / canvas.width;
+
+    const outputCanvas = document.createElement("canvas");
+    const ctx = outputCanvas.getContext("2d");
+
+    outputCanvas.width = maxWidth;
+    outputCanvas.height = canvas.height * scaleFactor;
+
+    ctx.drawImage(
+      canvas,
+      0,
+      0,
+      outputCanvas.width,
+      outputCanvas.height
+    );
+
+    const image = outputCanvas.toDataURL("image/png");
+
+    const link = document.createElement("a");
+    link.href = image;
+    link.download = `reservation_${selectedReservation.reservation_no}.png`;
     link.click();
-    document.body.removeChild(link);
   };
 
-  const handleCloseModal = () => {
-    setShowModal(false);
-    setEditMode(false);
-    setCurrentQrCode(null);
-    setImagePreview(null);
-    setFormData({
-      full_name: '',
-      cellphone_number: '',
-      status: true,
-      qr_image: null,
-      payment_category: 'GCash'
+  const downloadPDF = () => {
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const card = cardRef.current;
+
+    html2canvas(card, { scale: 2 }).then((canvas) => {
+      const imgData = canvas.toDataURL('image/png');
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pdfWidth - 20;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+      pdf.save(`reservation_${selectedReservation.reservation_no}.pdf`);
     });
   };
 
-  // Enhanced filtering with category
-  const filteredQRCodes = qrCodes.filter(qr => {
-    const matchesSearch = qr.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      qr.cellphone_number?.toString().includes(searchTerm);
-
-    const matchesCategory = filterCategory === 'all' ||
-      qr.payment_category?.toLowerCase() === filterCategory.toLowerCase();
-
-    return matchesSearch && matchesCategory;
-  });
-
-  // Get category icon and color
-  const getCategoryStyle = (category) => {
-    const styles = {
-      'GCash': { icon: '💙', color: '#007AFF', bg: '#E3F2FF' },
-      'PayMaya': { icon: '💚', color: '#00D632', bg: '#E3FFE7' },
-      'Cash': { icon: '💵', color: '#FFA500', bg: '#FFF4E3' },
-      'Bank Transfer': { icon: '🏦', color: '#6366F1', bg: '#EEF2FF' },
-      'Credit Card': { icon: '💳', color: '#8B5CF6', bg: '#F5F3FF' },
-    };
-    return styles[category] || { icon: '💳', color: '#6B7280', bg: '#F3F4F6' };
-  };
-
-  // Get category counts
-  const categoryCounts = {
-    all: qrCodes.length,
-    gcash: qrCodes.filter(qr => qr.payment_category?.toLowerCase() === 'gcash').length,
-    paymaya: qrCodes.filter(qr => qr.payment_category?.toLowerCase() === 'paymaya').length,
-    cash: qrCodes.filter(qr => qr.payment_category?.toLowerCase() === 'cash').length,
-    bank: qrCodes.filter(qr => qr.payment_category?.toLowerCase() === 'bank transfer').length,
-    card: qrCodes.filter(qr => qr.payment_category?.toLowerCase() === 'credit card').length,
-  };
-
-  if (loading) {
-    return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '400px'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: '50px',
-            height: '50px',
-            border: '5px solid #f3f3f3',
-            borderTop: '5px solid #6f42c1',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto'
-          }}></div>
-          <p style={{ marginTop: '15px', color: '#666' }}>Loading QR codes...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ padding: '30px 20px', maxWidth: '1400px', margin: '0 auto' }}>
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        .qr-card {
-          animation: slideUp 0.4s ease-out;
-        }
+    <div className="flex justify-center min-h-screen p-6 bg-gradient-to-br from-slate-100 to-slate-200">
 
-        .filter-btn {
-          transition: all 0.3s ease;
-        }
+      {/* Left Section (Scanner + Manual Search) */}
+      <div className="bg-white shadow-xl rounded-2xl p-6 w-[430px] h-[600px]">
+        <h1 className="mb-4 text-2xl font-bold text-gray-800">QR Code Verification</h1>
 
-        .filter-btn:hover {
-          transform: translateY(-2px);
-        }
-      `}</style>
-
-      {/* Header */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '35px',
-        flexWrap: 'wrap',
-        gap: '15px'
-      }}>
-        <div>
-          <h2 style={{
-            margin: 0,
-            fontSize: '32px',
-            fontWeight: '800',
-            color: '#1a1a1a',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            letterSpacing: '-0.5px'
-          }}>
-            <div style={{
-              background: 'linear-gradient(135deg, #6f42c1 0%, #8b5cf6 100%)',
-              padding: '8px 12px',
-              borderRadius: '10px',
-              display: 'flex',
-              alignItems: 'center'
-            }}>
-              <QrCodeIcon size={28} color="white" />
-            </div>
-            Payment Methods
-          </h2>
-          <p style={{
-            margin: '8px 0 0 0',
-            color: '#666',
-            fontSize: '15px',
-            fontWeight: '500'
-          }}>
-            Manage all payment QR codes • Total: <span style={{ fontWeight: '700', color: '#6f42c1' }}>{qrCodes.length}</span>
-          </p>
-        </div>
-        <button
-          onClick={() => setShowModal(true)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '12px 28px',
-            background: 'linear-gradient(135deg, #6f42c1 0%, #8b5cf6 100%)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '10px',
-            fontSize: '15px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            boxShadow: '0 4px 15px rgba(111, 66, 193, 0.3)',
-            whiteSpace: 'nowrap'
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.transform = 'translateY(-3px)';
-            e.currentTarget.style.boxShadow = '0 8px 25px rgba(111, 66, 193, 0.4)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 15px rgba(111, 66, 193, 0.3)';
-          }}
-        >
-          <Plus size={20} />
-          Add Payment Method
-        </button>
-      </div>
-
-      {/* Category Filter Chips */}
-      <div style={{
-        marginBottom: '25px',
-        display: 'flex',
-        gap: '10px',
-        flexWrap: 'wrap',
-        alignItems: 'center'
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          marginRight: '8px'
-        }}>
-          <Filter size={18} color="#6f42c1" />
-          <span style={{ fontSize: '14px', fontWeight: '700', color: '#6f42c1' }}>FILTER:</span>
-        </div>
-
-        {[
-          { label: 'All', value: 'all', count: categoryCounts.all, icon: '📱', color: '#6f42c1' },
-          { label: 'GCash', value: 'gcash', count: categoryCounts.gcash, icon: '💙', color: '#007AFF' },
-          { label: 'PayMaya', value: 'paymaya', count: categoryCounts.paymaya, icon: '💚', color: '#00D632' },
-          { label: 'Cash', value: 'cash', count: categoryCounts.cash, icon: '💵', color: '#FFA500' },
-          { label: 'Bank', value: 'bank transfer', count: categoryCounts.bank, icon: '🏦', color: '#6366F1' },
-          { label: 'Card', value: 'credit card', count: categoryCounts.card, icon: '💳', color: '#8B5CF6' },
-        ].map(cat => (
-          <button
-            key={cat.value}
-            onClick={() => setFilterCategory(cat.value)}
-            className="filter-btn"
-            style={{
-              padding: '8px 16px',
-              borderRadius: '20px',
-              border: filterCategory === cat.value ? `2px solid ${cat.color}` : '2px solid #e5e7eb',
-              background: filterCategory === cat.value ? `${cat.color}15` : 'white',
-              color: filterCategory === cat.value ? cat.color : '#6b7280',
-              fontSize: '13px',
-              fontWeight: '700',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: filterCategory === cat.value ? `0 4px 12px ${cat.color}30` : 'none'
-            }}
-          >
-            <span>{cat.icon}</span>
-            <span>{cat.label}</span>
-            <span style={{
-              background: filterCategory === cat.value ? cat.color : '#e5e7eb',
-              color: filterCategory === cat.value ? 'white' : '#6b7280',
-              padding: '2px 8px',
-              borderRadius: '10px',
-              fontSize: '11px',
-              fontWeight: '800'
-            }}>
-              {cat.count}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* Search Bar */}
-      <div style={{ marginBottom: '30px' }}>
-        <div style={{
-          position: 'relative',
-          maxWidth: '450px'
-        }}>
-          <Search
-            size={20}
-            style={{
-              position: 'absolute',
-              left: '14px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: '#9ca3af'
-            }}
-          />
-          <input
-            type="text"
-            placeholder="Search by payment method or phone number..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '12px 12px 12px 46px',
-              border: '2px solid #e5e7eb',
-              borderRadius: '10px',
-              fontSize: '15px',
-              outline: 'none',
-              transition: 'all 0.2s',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)'
-            }}
-            onFocus={e => {
-              e.currentTarget.style.borderColor = '#6f42c1';
-              e.currentTarget.style.boxShadow = '0 0 0 3px rgba(111, 66, 193, 0.1)';
-            }}
-            onBlur={e => {
-              e.currentTarget.style.borderColor = '#e5e7eb';
-              e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.05)';
-            }}
-          />
-        </div>
-      </div>
-
-      {/* QR Codes Grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-        gap: '24px'
-      }}>
-        {filteredQRCodes.length === 0 ? (
-          <div style={{
-            gridColumn: '1 / -1',
-            textAlign: 'center',
-            padding: '60px 40px',
-            background: 'linear-gradient(135deg, rgba(111, 66, 193, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%)',
-            borderRadius: '16px',
-            border: '2px dashed #e5e7eb'
-          }}>
-            <div style={{ fontSize: '64px', display: 'block', margin: '0 auto 20px' }}>🔍</div>
-            <p style={{ color: '#666', fontSize: '16px', fontWeight: '600', margin: '0 0 8px 0' }}>
-              {searchTerm || filterCategory !== 'all' ? 'No matching payment methods' : 'No payment methods yet'}
-            </p>
-            <p style={{ color: '#999', fontSize: '14px', margin: 0 }}>
-              {searchTerm || filterCategory !== 'all' ? 'Try adjusting your filters' : 'Click the button above to add your first payment method'}
-            </p>
-          </div>
-        ) : (
-          filteredQRCodes.map((qr) => {
-            const categoryStyle = getCategoryStyle(qr.payment_category);
-            return (
-              <div
-                key={qr.qr_id}
-                className="qr-card"
-                style={{
-                  background: 'white',
-                  borderRadius: '14px',
-                  boxShadow: '0 2px 12px rgba(0, 0, 0, 0.08)',
-                  overflow: 'hidden',
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  border: '1px solid #f0f0f0',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  height: '100%',
-                  position: 'relative'
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.transform = 'translateY(-8px)';
-                  e.currentTarget.style.boxShadow = `0 12px 30px ${categoryStyle.color}25`;
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 2px 12px rgba(0, 0, 0, 0.08)';
-                }}
-              >
-                {/* Category Badge */}
-                <div style={{
-                  position: 'absolute',
-                  top: '12px',
-                  left: '12px',
-                  zIndex: 10,
-                  background: categoryStyle.bg,
-                  color: categoryStyle.color,
-                  padding: '6px 12px',
-                  borderRadius: '20px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  boxShadow: `0 2px 8px ${categoryStyle.color}30`
-                }}>
-                  <span>{categoryStyle.icon}</span>
-                  <span>{qr.payment_category || 'Other'}</span>
-                </div>
-
-                {/* Status Badge */}
-                <div style={{
-                  position: 'absolute',
-                  top: '12px',
-                  right: '12px',
-                  zIndex: 10,
-                  background: qr.status ? '#10b981' : '#ef4444',
-                  color: 'white',
-                  padding: '6px 12px',
-                  borderRadius: '20px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
-                }}>
-                  {qr.status ? '✓ Active' : '✗ Inactive'}
-                </div>
-
-                {/* QR Code Image */}
-                <div style={{
-                  padding: '50px 24px 24px 24px',
-                  background: `linear-gradient(135deg, ${categoryStyle.bg} 0%, ${categoryStyle.bg}80 100%)`,
-                  textAlign: 'center',
-                  borderBottom: '1px solid #f0f0f0',
-                  flex: '1',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <img
-                    src={qr.qr_image}
-                    alt={`QR Code for ${qr.full_name}`}
-                    style={{
-                      width: '160px',
-                      height: '160px',
-                      objectFit: 'contain',
-                      border: '3px solid white',
-                      borderRadius: '10px',
-                      background: 'white',
-                      padding: '8px',
-                      boxShadow: `0 4px 12px ${categoryStyle.color}20`
-                    }}
-                  />
-                </div>
-
-                {/* Card Details */}
-                <div style={{ padding: '20px' }}>
-                  <div style={{ marginBottom: '14px' }}>
-                    <p style={{
-                      margin: '0 0 6px 0',
-                      fontSize: '12px',
-                      color: '#999',
-                      fontWeight: '700',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px'
-                    }}>
-                      Payment Method
-                    </p>
-                    <p style={{
-                      margin: 0,
-                      fontSize: '16px',
-                      fontWeight: '700',
-                      color: '#1a1a1a',
-                    }}>
-                      {qr.full_name}
-                    </p>
+        {/* GCash-style QR Scanner */}
+        <div className="relative mb-4 overflow-hidden rounded-xl" style={{ height: '250px' }}>
+          {scannerActive ? (
+            <div className="relative w-full h-full">
+              <div id="qr-reader" className="w-full h-full"></div>
+              {/* GCash-style scanning frame overlay */}
+              <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="relative w-[250px] h-[250px]">
+                    {/* Corner borders - GCash style */}
+                    <div className="absolute top-0 left-0 w-12 h-12 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
+                    <div className="absolute top-0 right-0 w-12 h-12 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
+                    <div className="absolute bottom-0 left-0 w-12 h-12 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
+                    <div className="absolute bottom-0 right-0 w-12 h-12 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
+                    
+                    {/* Scanning line animation */}
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500 animate-scan"></div>
                   </div>
-
-                  <div style={{ marginBottom: '16px' }}>
-                    <p style={{
-                      margin: '0 0 6px 0',
-                      fontSize: '12px',
-                      color: '#999',
-                      fontWeight: '700',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px'
-                    }}>
-                      Phone Number
-                    </p>
-                    <p style={{
-                      margin: 0,
-                      fontSize: '15px',
-                      fontWeight: '700',
-                      color: categoryStyle.color,
-                      fontFamily: "'Courier New', monospace"
-                    }}>
-                      {qr.cellphone_number}
-                    </p>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div style={{
-                    display: 'flex',
-                    gap: '8px',
-                    paddingTop: '16px',
-                    borderTop: '1px solid #f0f0f0'
-                  }}>
-                    <button
-                      onClick={() => handleEdit(qr)}
-                      style={{
-                        flex: 1,
-                        padding: '10px',
-                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.3)';
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }}
-                    >
-                      <Edit2 size={16} />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(qr.qr_id, qr.full_name)}
-                      style={{
-                        flex: 1,
-                        padding: '10px',
-                        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.3)';
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }}
-                    >
-                      <Trash2 size={16} />
-                      Delete
-                    </button>
-                    <button
-                      onClick={() => handleDownload(qr.qr_image, qr.full_name, qr.qr_id)}
-                      style={{
-                        flex: 1,
-                        padding: '10px',
-                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }}
-                    >
-                      <Download size={16} />
-                      Download
-                    </button>
-                  </div>
+                </div>
+                
+                {/* Instructions text */}
+                <div className="absolute left-0 right-0 text-center bottom-4">
+                  <p className="inline-block px-4 py-2 text-sm font-semibold text-white rounded-full bg-black/60">
+                    Align QR code within frame
+                  </p>
                 </div>
               </div>
-            );
-          })
-        )}
-      </div>
-    
-   
-
-  {/* Modal */ }
-{
-  showModal && (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      zIndex: 1000,
-      backdropFilter: 'blur(4px)'
-    }}>
-      <div style={{
-        backgroundColor: 'white',
-        borderRadius: '16px',
-        width: '90%',
-        maxWidth: '520px',
-        maxHeight: '90vh',
-        overflow: 'auto',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-        animation: 'slideUp 0.3s ease-out'
-      }}>
-        {/* Modal Header */}
-        <div style={{
-          padding: '24px',
-          background: 'linear-gradient(135deg, #6f42c1 0%, #8b5cf6 100%)',
-          borderRadius: '16px 16px 0 0',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <h3 style={{
-            margin: 0,
-            fontSize: '22px',
-            fontWeight: '800',
-            color: 'white',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            letterSpacing: '-0.3px'
-          }}>
-            <QrCodeIcon size={26} />
-            {editMode ? 'Edit QR Code' : 'Add New QR Code'}
-          </h3>
-          <button
-            onClick={handleCloseModal}
-            style={{
-              background: 'rgba(255,255,255,0.2)',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '6px',
-              display: 'flex',
-              alignItems: 'center',
-              color: 'white',
-              borderRadius: '6px',
-              transition: 'all 0.2s'
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
-          >
-            <X size={24} />
-          </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full p-8 border-2 border-blue-300 border-dashed bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl">
+              <div className="relative">
+                <QrCode size={60} className="text-blue-500" />
+                {/* Decorative scan lines */}
+                <div className="absolute border-2 border-blue-300 rounded-lg opacity-50 -inset-2"></div>
+                <div className="absolute border-2 border-blue-200 rounded-lg -inset-4 opacity-30"></div>
+              </div>
+              <p className="mt-4 text-base font-semibold text-blue-700">Scan QR Code</p>
+              <p className="mt-1 text-xs text-blue-500">Position QR code within frame</p>
+            </div>
+          )}
         </div>
 
-        {/* Modal Body */}
-        <div style={{ padding: '28px' }}>
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontWeight: '700',
-              color: '#1a1a1a',
-              fontSize: '15px'
-            }}>
-              Payment Method Name <span style={{ color: '#dc3545' }}>*</span>
-            </label>
-            <input
-              type="text"
-              name="full_name"
-              value={formData.full_name}
-              onChange={handleInputChange}
-              placeholder="e.g., GCash - Store Name"
-              required
-              style={{
-                width: '100%',
-                padding: '11px 14px',
-                border: '2px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '14px',
-                outline: 'none',
-                boxSizing: 'border-box',
-                transition: 'all 0.2s'
-              }}
-              onFocus={e => {
-                e.currentTarget.style.borderColor = '#6f42c1';
-                e.currentTarget.style.boxShadow = '0 0 0 3px rgba(111, 66, 193, 0.1)';
-              }}
-              onBlur={e => {
-                e.currentTarget.style.borderColor = '#e5e7eb';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            />
-          </div>
+        <button
+          onClick={toggleScanner}
+          disabled={cameraDevices.length === 0}
+          className={`w-full px-4 py-3 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 ${
+            cameraDevices.length === 0
+              ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+              : scannerActive 
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
+        >
+          <QrCode size={18} />
+          {scannerActive ? "Stop Scanner" : cameraDevices.length === 0 ? "No Camera Detected" : "Start Scanner"}
+        </button>
 
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontWeight: '700',
-              color: '#1a1a1a',
-              fontSize: '15px'
-            }}>
-              Cellphone Number <span style={{ color: '#dc3545' }}>*</span>
-            </label>
-            <input
-              type="tel"
-              name="cellphone_number"
-              value={formData.cellphone_number}
-              onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '');
-                if (value.length <= 11) {
-                  setFormData(prev => ({
-                    ...prev,
-                    cellphone_number: value
-                  }));
-                }
-              }}
-              placeholder="09XXXXXXXXX"
-              required
-              maxLength="11"
-              pattern="09[0-9]{9}"
-              style={{
-                width: '100%',
-                padding: '11px 14px',
-                border: '2px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '14px',
-                outline: 'none',
-                boxSizing: 'border-box',
-                transition: 'all 0.2s'
-              }}
-              onFocus={e => {
-                e.currentTarget.style.borderColor = '#6f42c1';
-                e.currentTarget.style.boxShadow = '0 0 0 3px rgba(111, 66, 193, 0.1)';
-              }}
-              onBlur={e => {
-                e.currentTarget.style.borderColor = '#e5e7eb';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            />
+        {cameraDevices.length > 1 && !scannerActive && (
+          <div className="mt-3">
+            <select
+              value={selectedCamera || ''}
+              onChange={(e) => setSelectedCamera(e.target.value)}
+              className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {cameraDevices.map((device) => (
+                <option key={device.id} value={device.id}>
+                  {device.label || `Camera ${device.id}`}
+                </option>
+              ))}
+            </select>
           </div>
+        )}
 
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontWeight: '700',
-              color: '#1a1a1a',
-              fontSize: '15px'
-            }}>
-              Upload QR Code Image <span style={{ color: '#dc3545' }}>*</span>
-            </label>
-            <div style={{
-              border: '2px dashed #e5e7eb',
-              borderRadius: '10px',
-              padding: '24px',
-              textAlign: 'center',
-              background: '#f9f7ff',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-              onMouseEnter={e => {
-                e.currentTarget.style.borderColor = '#6f42c1';
-                e.currentTarget.style.backgroundColor = '#f0e6ff';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.borderColor = '#e5e7eb';
-                e.currentTarget.style.backgroundColor = '#f9f7ff';
-              }}
-              onClick={() => document.getElementById('qr-upload').click()}>
-              <div style={{ fontSize: '48px', marginBottom: '10px' }}>📤</div>
-              <p style={{ margin: '0 0 6px 0', fontSize: '15px', fontWeight: '700', color: '#1a1a1a' }}>
-                Click to upload
-              </p>
-              <p style={{ margin: 0, fontSize: '13px', color: '#999' }}>
-                PNG, JPG up to 5MB
-              </p>
+        <p className="mt-4 mb-2 text-xs text-center text-gray-400">OR</p>
+
+        {/* Real-time Search with Suggestions */}
+        <div className="relative" ref={searchRef}>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute text-gray-400 transform -translate-y-1/2 left-3 top-1/2" size={18} />
+              <input
+                type="text"
+                placeholder="Search reservation number..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleSearch()}
+                onFocus={() => searchQuery && setShowSuggestions(true)}
+                className="w-full py-2 pl-10 pr-4 transition-all border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
             </div>
-            <input
-              id="qr-upload"
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              style={{ display: 'none' }}
-            />
+            <button
+              onClick={() => handleSearch()}
+              className="px-4 py-2 text-sm font-semibold text-white transition bg-gray-900 rounded-lg hover:bg-gray-800"
+            >
+              Verify
+            </button>
+          </div>
 
-            {imagePreview && (
-              <div style={{
-                marginTop: '18px',
-                border: '2px solid #6f42c1',
-                borderRadius: '10px',
-                padding: '16px',
-                textAlign: 'center',
-                backgroundColor: '#f9f7ff'
-              }}>
-                <p style={{
-                  margin: '0 0 12px 0',
-                  fontSize: '13px',
-                  fontWeight: '700',
-                  color: '#6f42c1',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
-                }}>
-                  Preview
-                </p>
-                <img
-                  src={imagePreview}
-                  alt="QR Code preview"
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '280px',
-                    borderRadius: '8px',
-                    border: '2px solid white'
-                  }}
+          {/* Real-time Suggestions Dropdown */}
+          {showSuggestions && filteredReservations.length > 0 && (
+            <div className="absolute z-10 w-full mt-2 overflow-y-auto bg-white border-2 border-gray-200 rounded-lg shadow-xl max-h-60">
+              {filteredReservations.map((reservation) => (
+                <div
+                  key={reservation.id}
+                  onClick={() => handleSuggestionClick(reservation)}
+                  className="px-4 py-3 transition-colors border-b border-gray-100 cursor-pointer hover:bg-blue-50 last:border-b-0"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-gray-800">{reservation.reservation_no}</p>
+                      <p className="text-xs text-gray-500">Table {reservation.table_id} • {reservation.reservation_date}</p>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full font-semibold ${
+                      reservation.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
+                    }`}>
+                      {reservation.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* MODAL FOR RESERVATION DETAILS */}
+      {selectedReservation && !confirmationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-[600px] relative">
+
+            <button
+              onClick={() => setSelectedReservation(null)}
+              className="absolute text-gray-500 top-4 right-4 hover:text-black"
+            >
+              <X size={22} />
+            </button>
+
+            <div ref={cardRef}>
+              <h2 className="flex items-center gap-2 text-2xl font-bold text-green-600">
+                <CheckCircle size={26} className="text-green-500" />
+                Reservation Verified
+              </h2>
+
+              <div className="mt-4 space-y-2 text-gray-700">
+                <Detail label="Reservation No" value={selectedReservation.reservation_no || "N/A"} />
+                <Detail label="Reservation ID" value={`#${selectedReservation.id}`} />
+                <Detail label="Table" value={`Table ${selectedReservation.table_id}`} />
+                <Detail label="Date" value={selectedReservation.reservation_date} />
+                <Detail label="Start Time" value={selectedReservation.start_time} />
+                <Detail label="Duration" value={`${selectedReservation.duration} hr(s)`} />
+                <Detail label="Payment Method" value={selectedReservation.paymentMethod || "N/A"} />
+                <Detail label="Payment Type" value={selectedReservation.payment_type || "N/A"} />
+                <Detail label="Total Bill" value={`₱${selectedReservation.total_bill || 0}`} />
+                <Detail label="Payment Status" value={selectedReservation.payment_status ? "Paid" : "Pending"} />
+                <Detail label="Billiard Type" value={selectedReservation.billiard_type || "N/A"} />
+              </div>
+            </div>
+
+            {/* ACTION BUTTONS */}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={downloadPDF}
+                className="flex-1 py-3 font-semibold text-white transition bg-blue-600 rounded-xl hover:bg-blue-700"
+              >
+                Download PDF
+              </button>
+
+              <button
+                onClick={saveAsImage}
+                className="flex-1 py-3 font-semibold text-white transition bg-purple-600 rounded-xl hover:bg-purple-700"
+              >
+                Save Image
+              </button>
+
+              <button
+                onClick={() => setShowProofModal(true)}
+                className="flex items-center justify-center flex-1 gap-2 py-3 font-semibold text-white transition bg-amber-600 rounded-xl hover:bg-amber-700"
+              >
+                {selectedReservation.proof_of_payment ? (
+                  <>
+                    <FileImage size={18} />
+                    View Proof
+                  </>
+                ) : (
+                  <>
+                    <FolderOpen size={18} />
+                    No Proof
+                  </>
+                )}
+              </button>
+            </div>
+
+            <button
+              onClick={handleCheckInClick}
+              className="w-full py-3 mt-4 font-semibold text-white transition bg-green-600 rounded-xl hover:bg-green-700"
+            >
+              Check-in Customer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMATION MODAL */}
+      {selectedReservation && confirmationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-[500px] relative">
+            
+            <button
+              onClick={() => setConfirmationModal(false)}
+              className="absolute text-gray-500 top-4 right-4 hover:text-black"
+            >
+              <X size={22} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-6">
+              <AlertCircle size={28} className="text-blue-600" />
+              <h2 className="text-2xl font-bold text-gray-800">Confirm Check-in</h2>
+            </div>
+
+            <div className="p-4 mb-6 space-y-3 rounded-lg bg-gray-50">
+              <Detail label="Reservation No" value={selectedReservation.reservation_no || "N/A"} />
+              <Detail label="Table" value={`Table ${selectedReservation.table_id}`} />
+              <Detail label="Payment Method" value={selectedReservation.paymentMethod || "N/A"} />
+              <Detail label="Payment Type" value={selectedReservation.payment_type || "N/A"} />
+              <Detail label="Total Bill" value={`₱${selectedReservation.total_bill || 0}`} />
+              {generatedRefNo && (
+                <div className="p-2 mt-3 border-2 border-blue-200 rounded bg-blue-50">
+                  <Detail label="Reference No" value={generatedRefNo} />
+                </div>
+              )}
+            </div>
+
+            {selectedReservation.paymentMethod === 'GCash' && (
+              <div className="mb-6">
+                <label className="block mb-2 text-sm font-semibold text-gray-700">
+                  GCash Reference Number <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter GCash Reference Number"
+                  value={gcashRefNo}
+                  onChange={(e) => setGcashRefNo(e.target.value)}
+                  className="w-full px-4 py-2 transition-all border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             )}
-          </div>
 
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              cursor: 'pointer',
-              margin: 0
-            }}>
-              <input
-                type="checkbox"
-                name="status"
-                checked={formData.status}
-                onChange={handleInputChange}
-                style={{
-                  width: '18px',
-                  height: '18px',
-                  cursor: 'pointer',
-                  accentColor: '#6f42c1'
-                }}
-              />
-              <span style={{ fontSize: '15px', fontWeight: '600', color: '#1a1a1a' }}>
-                Set as Active
-              </span>
-            </label>
-            <p style={{ fontSize: '13px', color: '#999', marginTop: '6px', marginLeft: '28px', margin: '6px 0 0 28px' }}>
-              Customers will see this payment method when enabled
-            </p>
-          </div>
+            {selectedReservation.paymentMethod === 'Cash' && selectedReservation.payment_type === 'Full Payment' && (
+              <div className="p-4 mb-6 border-2 border-green-200 rounded-lg bg-green-50">
+                <p className="text-sm font-semibold text-green-700">
+                  ✓ Payment will be marked as <strong>COMPLETE</strong> upon check-in
+                </p>
+              </div>
+            )}
 
-          {/* Modal Footer */}
-          <div style={{
-            display: 'flex',
-            gap: '12px',
-            justifyContent: 'flex-end',
-            paddingTop: '24px',
-            borderTop: '1px solid #e5e7eb'
-          }}>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmationModal(false)}
+                className="flex-1 py-3 font-semibold text-gray-800 transition bg-gray-300 rounded-xl hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmCheckIn}
+                className="flex-1 py-3 font-semibold text-white transition bg-green-600 rounded-xl hover:bg-green-700"
+              >
+                Confirm Check-in
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PROOF OF PAYMENT MODAL */}
+      {selectedReservation && showProofModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-[700px] max-h-[90vh] overflow-y-auto relative">
+            
             <button
-              onClick={handleCloseModal}
-              disabled={uploading}
-              style={{
-                padding: '11px 24px',
-                backgroundColor: '#f3f4f6',
-                color: '#374151',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                cursor: uploading ? 'not-allowed' : 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                opacity: uploading ? 0.6 : 1,
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={e => !uploading && (e.currentTarget.style.backgroundColor = '#e5e7eb')}
-              onMouseLeave={e => !uploading && (e.currentTarget.style.backgroundColor = '#f3f4f6')}
+              onClick={() => setShowProofModal(false)}
+              className="absolute z-10 text-gray-500 top-4 right-4 hover:text-black"
             >
-              Cancel
+              <X size={22} />
             </button>
+
+            <h2 className="flex items-center gap-2 mb-4 text-2xl font-bold text-gray-800">
+              <FileImage size={26} className="text-amber-600" />
+              Proof of Payment
+            </h2>
+
+            <div className="p-4 mb-4 rounded-lg bg-gray-50">
+              <Detail label="Reservation No" value={selectedReservation.reservation_no || "N/A"} />
+              <Detail label="Payment Method" value={selectedReservation.paymentMethod || "N/A"} />
+            </div>
+
+            {selectedReservation.proof_of_payment ? (
+              <div className="p-4 bg-white border-2 border-gray-200 rounded-lg">
+                <img 
+                  src={selectedReservation.proof_of_payment} 
+                  alt="Proof of Payment"
+                  className="w-full h-auto rounded-lg shadow-md"
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center p-12 bg-gray-100 border-2 border-gray-300 border-dashed rounded-lg">
+                <FolderOpen size={60} className="mb-4 text-gray-400" />
+                <p className="text-lg font-semibold text-gray-500">No Proof of Payment</p>
+                <p className="mt-2 text-sm text-gray-400">Customer has not uploaded proof of payment yet.</p>
+              </div>
+            )}
+
             <button
-              onClick={handleSubmit}
-              disabled={uploading}
-              style={{
-                padding: '11px 24px',
-                background: 'linear-gradient(135deg, #6f42c1 0%, #8b5cf6 100%)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: uploading ? 'not-allowed' : 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                opacity: uploading ? 0.6 : 1,
-                transition: 'all 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-              onMouseEnter={e => !uploading && (e.currentTarget.style.transform = 'translateY(-2px)')}
-              onMouseLeave={e => !uploading && (e.currentTarget.style.transform = 'translateY(0)')}
+              onClick={() => setShowProofModal(false)}
+              className="w-full py-3 mt-6 font-semibold text-white transition bg-gray-800 rounded-xl hover:bg-gray-900"
             >
-              {uploading ? (
-                <>
-                  <div style={{
-                    width: '14px',
-                    height: '14px',
-                    border: '2px solid white',
-                    borderTop: '2px solid transparent',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite'
-                  }}></div>
-                  Uploading...
-                </>
-              ) : (
-                editMode ? 'Save Changes' : 'Add QR Code'
-              )}
+              Close
             </button>
           </div>
         </div>
-      </div>
-    </div>
-  )
-}
-    </div >
-  );
-};
+      )}
 
-export default QRCodeManagement;
+      {/* Add CSS for scanning animation */}
+      <style jsx>{`
+        @keyframes scan {
+          0% {
+            top: 0;
+            opacity: 0;
+          }
+          50% {
+            opacity: 1;
+          }
+          100% {
+            top: 100%;
+            opacity: 0;
+          }
+        }
+        .animate-scan {
+          animation: scan 2s ease-in-out infinite;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function Detail({ label, value }) {
+  return (
+    <div className="flex justify-between pb-1 border-b">
+      <span className="text-sm font-medium">{label}:</span>
+      <span className="text-sm">{value}</span>
+    </div>
+  );
+}
