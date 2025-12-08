@@ -21,6 +21,26 @@ export default function QRCheckInPage() {
   const [cameraDevices, setCameraDevices] = useState([]);
   const [selectedCamera, setSelectedCamera] = useState(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [tableName, setTableName] = useState("");
+
+  useEffect(() => {
+    const fetchTableName = async () => {
+      if (!selectedReservation?.table_id) return;
+
+      const { data, error } = await supabase
+        .from("billiard_table")
+        .select("table_name")
+        .eq("table_id", selectedReservation.table_id)
+        .single();
+
+      if (!error && data) {
+        setTableName(data.table_name);
+      }
+    };
+
+    fetchTableName();
+  }, [selectedReservation?.table_id]);
+
   const html5QrCodeRef = useRef(null);
   const cardRef = useRef(null);
   const searchRef = useRef(null);
@@ -34,7 +54,7 @@ export default function QRCheckInPage() {
   // Real-time search filter
   useEffect(() => {
     if (searchQuery.trim()) {
-      const filtered = reservations.filter(r => 
+      const filtered = reservations.filter(r =>
         r.reservation_no?.toLowerCase().includes(searchQuery.toLowerCase())
       );
       setFilteredReservations(filtered);
@@ -111,13 +131,13 @@ export default function QRCheckInPage() {
             onScanSuccess,
             onScanError
           );
-          
+
           setIsScanning(true);
         } catch (err) {
           console.error("Error starting scanner:", err);
-          
+
           let errorMessage = 'Unable to access camera. Please check permissions.';
-          
+
           if (err.toString().includes('NotFoundError')) {
             errorMessage = 'Camera not found. Please make sure your camera is connected and enabled.';
           } else if (err.toString().includes('NotAllowedError')) {
@@ -125,7 +145,7 @@ export default function QRCheckInPage() {
           } else if (err.toString().includes('NotReadableError')) {
             errorMessage = 'Camera is already in use by another application. Please close other apps using the camera.';
           }
-          
+
           Swal.fire({
             icon: 'error',
             title: 'Camera Error',
@@ -156,12 +176,12 @@ export default function QRCheckInPage() {
     };
   }, [scannerActive]);
 
-const fetchReservations = async () => {
+  const fetchReservations = async () => {
     try {
       const { data, error } = await supabase
         .from('reservation')
         .select('*');
-        // Remove the .in('status', ['pending', 'approved']) to get all reservations
+      // Remove the .in('status', ['pending', 'approved']) to get all reservations
 
       if (error) throw error;
       setReservations(data || []);
@@ -170,9 +190,9 @@ const fetchReservations = async () => {
     }
   };
 
-const onScanSuccess = (decodedText) => {
+  const onScanSuccess = (decodedText) => {
     let searchValue = decodedText;
-    
+
     // Try to parse as JSON to extract reservationNo
     try {
       const parsed = JSON.parse(decodedText);
@@ -183,7 +203,7 @@ const onScanSuccess = (decodedText) => {
       // If not valid JSON, use the raw text
       searchValue = decodedText;
     }
-    
+
     // Set the search query to the extracted reservation number
     setSearchQuery(searchValue);
     // Automatically search using the scanned QR code
@@ -195,7 +215,7 @@ const onScanSuccess = (decodedText) => {
     // Silent - normal scanning errors
   };
 
-  
+
 
   const stopScanner = async () => {
     if (html5QrCodeRef.current && isScanning) {
@@ -223,12 +243,12 @@ const onScanSuccess = (decodedText) => {
     }
   };
 
-const handleSearch = async (query = searchQuery) => {
+  const handleSearch = async (query = searchQuery) => {
     const searchTerm = String(query).trim();
     if (!searchTerm) return;
 
     const found = reservations.find(r => r.reservation_no === searchTerm);
-    
+
     if (!found) {
       // Instead of showing "Not Found", show verification dialog
       const result = await Swal.fire({
@@ -270,12 +290,12 @@ const handleSearch = async (query = searchQuery) => {
         preConfirm: async (value) => {
           const trimmedValue = value.trim();
           const recheckFound = reservations.find(r => r.reservation_no === trimmedValue);
-          
+
           if (!recheckFound) {
             Swal.showValidationMessage('Reservation number still not found. Please check again.');
             return false;
           }
-          
+
           return trimmedValue;
         }
       });
@@ -284,10 +304,10 @@ const handleSearch = async (query = searchQuery) => {
         // Update search query and proceed with found reservation
         const trimmedValue = result.value.trim();
         setSearchQuery(trimmedValue);
-        
+
         // Re-fetch the found reservation
         const recheckFound = reservations.find(r => r.reservation_no === trimmedValue);
-        
+
         if (recheckFound) {
           // Check status and handle accordingly
           if (recheckFound.status === "ongoing") {
@@ -347,10 +367,10 @@ const handleSearch = async (query = searchQuery) => {
   };
 
   const handleCheckInClick = () => {
-    const refNo = selectedReservation.paymentMethod === 'Cash' && 
-                  selectedReservation.payment_type === 'Full Payment' 
-                  ? generateReferenceNumber() 
-                  : null;
+    const refNo = selectedReservation.paymentMethod === 'Cash' &&
+      selectedReservation.payment_type === 'Full Payment'
+      ? generateReferenceNumber()
+      : null;
     setGeneratedRefNo(refNo);
     setConfirmationModal(true);
   };
@@ -364,7 +384,7 @@ const handleSearch = async (query = searchQuery) => {
     const minute = String(now.getMinutes()).padStart(2, '0');
     const second = String(now.getSeconds()).padStart(2, '0');
     const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    
+
     return `${year}${month}${day}${hour}${minute}${second}${random}`;
   };
 
@@ -382,7 +402,7 @@ const handleSearch = async (query = searchQuery) => {
       try {
         const { error } = await supabase
           .from('reservation')
-          .update({ 
+          .update({
             status: 'pending',
             payment_status: true,
             reference_no: generatedRefNo
@@ -416,7 +436,7 @@ const handleSearch = async (query = searchQuery) => {
       try {
         const { error } = await supabase
           .from('reservation')
-          .update({ 
+          .update({
             status: 'pending',
             reference_no: gcashRefNo
           })
@@ -544,12 +564,12 @@ const handleSearch = async (query = searchQuery) => {
                     <div className="absolute top-0 right-0 w-12 h-12 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
                     <div className="absolute bottom-0 left-0 w-12 h-12 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
                     <div className="absolute bottom-0 right-0 w-12 h-12 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
-                    
+
                     {/* Scanning line animation */}
                     <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500 animate-scan"></div>
                   </div>
                 </div>
-                
+
                 {/* Instructions text */}
                 <div className="absolute left-0 right-0 text-center bottom-4">
                   <p className="inline-block px-4 py-2 text-sm font-semibold text-white rounded-full bg-black/60">
@@ -575,13 +595,12 @@ const handleSearch = async (query = searchQuery) => {
         <button
           onClick={toggleScanner}
           disabled={cameraDevices.length === 0}
-          className={`w-full px-4 py-3 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 ${
-            cameraDevices.length === 0
-              ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
-              : scannerActive 
-                ? 'bg-red-600 text-white hover:bg-red-700'
-                : 'bg-blue-600 text-white hover:bg-blue-700'
-          }`}
+          className={`w-full px-4 py-3 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 ${cameraDevices.length === 0
+            ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+            : scannerActive
+              ? 'bg-red-600 text-white hover:bg-red-700'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
         >
           <QrCode size={18} />
           {scannerActive ? "Stop Scanner" : cameraDevices.length === 0 ? "No Camera Detected" : "Start Scanner"}
@@ -642,9 +661,8 @@ const handleSearch = async (query = searchQuery) => {
                       <p className="font-semibold text-gray-800">{reservation.reservation_no}</p>
                       <p className="text-xs text-gray-500">Table {reservation.table_id} • {reservation.reservation_date}</p>
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-full font-semibold ${
-                      reservation.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
-                    }`}>
+                    <span className={`text-xs px-2 py-1 rounded-full font-semibold ${reservation.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
+                      }`}>
                       {reservation.status}
                     </span>
                   </div>
@@ -676,7 +694,8 @@ const handleSearch = async (query = searchQuery) => {
               <div className="mt-4 space-y-2 text-gray-700">
                 <Detail label="Reservation No" value={selectedReservation.reservation_no || "N/A"} />
                 <Detail label="Reservation ID" value={`#${selectedReservation.id}`} />
-                <Detail label="Table" value={`Table ${selectedReservation.table_id}`} />
+                <Detail label="Table" value={tableName ? tableName : `Table ${selectedReservation.table_id}`} />
+
                 <Detail label="Date" value={selectedReservation.reservation_date} />
                 <Detail label="Start Time" value={selectedReservation.start_time} />
                 <Detail label="Duration" value={`${selectedReservation.duration} hr(s)`} />
@@ -736,7 +755,7 @@ const handleSearch = async (query = searchQuery) => {
       {selectedReservation && confirmationModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-[500px] relative">
-            
+
             <button
               onClick={() => setConfirmationModal(false)}
               className="absolute text-gray-500 top-4 right-4 hover:text-black"
@@ -807,7 +826,7 @@ const handleSearch = async (query = searchQuery) => {
       {selectedReservation && showProofModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-[700px] max-h-[90vh] overflow-y-auto relative">
-            
+
             <button
               onClick={() => setShowProofModal(false)}
               className="absolute z-10 text-gray-500 top-4 right-4 hover:text-black"
@@ -827,8 +846,8 @@ const handleSearch = async (query = searchQuery) => {
 
             {selectedReservation.proof_of_payment ? (
               <div className="p-4 bg-white border-2 border-gray-200 rounded-lg">
-                <img 
-                  src={selectedReservation.proof_of_payment} 
+                <img
+                  src={selectedReservation.proof_of_payment}
                   alt="Proof of Payment"
                   className="w-full h-auto rounded-lg shadow-md"
                 />
