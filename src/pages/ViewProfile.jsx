@@ -29,201 +29,248 @@ export default function ViewProfile() {
     useEffect(() => {
         fetchProfile();
     }, []);
-    const fetchProfile = async () => {
-        try {
-            setLoading(true);
-            const session = JSON.parse(localStorage.getItem('userSession'));
+const fetchProfile = async () => {
+    try {
+        setLoading(true);
+        const session = JSON.parse(localStorage.getItem('userSession'));
 
-            if (!session || !session.account_id) {
+        if (!session || !session.account_id) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Not Logged In',
+                text: 'Please log in to view your profile.'
+            });
+            return;
+        }
+
+        const userRole = session?.role;
+        let profileData = null;
+
+        console.log('🔍 Fetching profile for:', session.account_id, 'Role:', userRole);
+
+        // Fetch based on role
+        if (userRole === 'frontdesk') {
+            // ✅ Use maybeSingle() instead of single()
+            const { data: frontdeskData, error: frontdeskError } = await supabase
+                .from('front_desk')
+                .select('*')
+                .eq('account_id', session.account_id)
+                .maybeSingle();
+
+            if (frontdeskError) {
+                console.error('❌ Frontdesk fetch error:', frontdeskError);
+                throw frontdeskError;
+            }
+
+            if (!frontdeskData) {
+                console.warn('⚠️ No front_desk data found for account_id:', session.account_id);
                 Swal.fire({
-                    icon: 'error',
-                    title: 'Not Logged In',
-                    text: 'Please log in to view your profile.'
+                    icon: 'warning',
+                    title: 'Profile Not Found',
+                    text: 'No frontdesk profile found for your account. Please contact admin.'
                 });
+                setLoading(false);
                 return;
             }
 
-            const userRole = session?.role;
-            let profileData = null;
+            const { data: profilesData } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.account_id)
+                .maybeSingle();
 
-            // Fetch based on role
-            if (userRole === 'frontdesk') {
-                // Fetch from front_desk table
-                const { data: frontdeskData, error: frontdeskError } = await supabase
-                    .from('front_desk')
-                    .select('*')
-                    .eq('account_id', session.account_id)
-                    .single();
+            const { data: accountData } = await supabase
+                .from('accounts')
+                .select('ProfilePicuture')
+                .eq('account_id', session.account_id)
+                .maybeSingle();
 
-                if (frontdeskError) throw frontdeskError;
+            const fullName = profilesData?.full_name || frontdeskData.staff_name || '';
+            const nameParts = fullName.split(' ');
 
-                // ✅ Fetch from profiles table
-                const { data: profilesData } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', session.account_id)
-                    .maybeSingle();
+            profileData = {
+                account_id: frontdeskData.account_id,
+                frontdesk_id: frontdeskData.frontdesk_id,
+                first_name: nameParts[0] || '',
+                last_name: nameParts.slice(1).join(' ') || '',
+                middle_name: null,
+                email: profilesData?.email || frontdeskData.email,
+                contact_number: profilesData?.phone || '',
+                birthdate: null,
+                gender: profilesData?.Gender || null,
+                username: null,
+                password: frontdeskData.password,
+                role: 'frontdesk',
+                ProfilePicuture: accountData?.ProfilePicuture || null
+            };
+        } else if (userRole === 'manager') {
+            const { data: managerData, error: managerError } = await supabase
+                .from('manager')
+                .select('*')
+                .eq('account_id', session.account_id)
+                .maybeSingle();
 
-                // Fetch profile picture from accounts table
-                const { data: accountData } = await supabase
-                    .from('accounts')
-                    .select('ProfilePicuture')
-                    .eq('account_id', session.account_id)
-                    .single();
-
-                // ✅ Use profiles data if available, otherwise use front_desk data
-                const fullName = profilesData?.full_name || frontdeskData.staff_name || '';
-                const nameParts = fullName.split(' ');
-
-                profileData = {
-                    account_id: frontdeskData.account_id,
-                    frontdesk_id: frontdeskData.frontdesk_id,
-                    first_name: nameParts[0] || '',
-                    last_name: nameParts.slice(1).join(' ') || '',
-                    middle_name: null,
-                    email: profilesData?.email || frontdeskData.email,
-                    contact_number: profilesData?.phone || '',
-                    birthdate: null,
-                    gender: profilesData?.Gender || null,
-                    username: null,
-                    password: frontdeskData.password,
-                    role: 'frontdesk',
-                    ProfilePicuture: accountData?.ProfilePicuture || null
-                };
-
-            } else if (userRole === 'manager') {
-                // Fetch from manager table
-                const { data: managerData, error: managerError } = await supabase
-                    .from('manager')
-                    .select('*')
-                    .eq('account_id', session.account_id)
-                    .single();
-
-                if (managerError) throw managerError;
-
-                // ✅ Fetch from profiles table
-                const { data: profilesData } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', session.account_id)
-                    .maybeSingle();
-
-                // Fetch profile picture from accounts table
-                const { data: accountData } = await supabase
-                    .from('accounts')
-                    .select('ProfilePicuture')
-                    .eq('account_id', session.account_id)
-                    .single();
-
-                // ✅ Use profiles data if available
-                const fullName = profilesData?.full_name || managerData.manager_name || '';
-                const nameParts = fullName.split(' ');
-
-                profileData = {
-                    account_id: managerData.account_id,
-                    manager_id: managerData.manager_id,
-                    first_name: nameParts[0] || '',
-                    last_name: nameParts.slice(1).join(' ') || '',
-                    middle_name: null,
-                    email: profilesData?.email || managerData.email,
-                    contact_number: profilesData?.phone || '',
-                    birthdate: null,
-                    gender: profilesData?.Gender || null,
-                    username: null,
-                    password: managerData.password,
-                    role: 'manager',
-                    ProfilePicuture: accountData?.ProfilePicuture || null
-                };
-
-            } else if (userRole === 'admin' || userRole === 'superadmin') {
-                // ✅ Fetch from admin table first, then profiles table
-                const { data: adminData, error: adminError } = await supabase
-                    .from('admin')
-                    .select('*')
-                    .eq('account_id', session.account_id)
-                    .maybeSingle();
-
-                // ✅ Fetch from profiles table
-                const { data: profilesData } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', session.account_id)
-                    .maybeSingle();
-
-                // Fetch profile picture from accounts table
-                const { data: accountData } = await supabase
-                    .from('accounts')
-                    .select('ProfilePicuture')
-                    .eq('account_id', session.account_id)
-                    .single();
-
-                // Determine which data to use
-                let fullName = '';
-                let email = '';
-
-                if (profilesData) {
-                    fullName = profilesData.full_name || '';
-                    email = profilesData.email || '';
-                } else if (adminData) {
-                    fullName = adminData.admin_name || '';
-                    email = adminData.email || '';
-                }
-
-                const nameParts = fullName.split(' ');
-
-                profileData = {
-                    account_id: session.account_id,
-                    admin_id: adminData?.admin_id || null,
-                    first_name: nameParts[0] || '',
-                    last_name: nameParts.slice(1).join(' ') || '',
-                    middle_name: null,
-                    email: email,
-                    contact_number: profilesData?.phone || '',
-                    birthdate: null,
-                    gender: profilesData?.Gender || null,
-                    username: null,
-                    password: profilesData?.password || adminData?.password || '',
-                    role: userRole,
-                    ProfilePicuture: accountData?.ProfilePicuture || null
-                };
-
-            } else {
-                // Fetch from customer table (default)
-                const { data: customerData, error: customerError } = await supabase
-                    .from('customer')
-                    .select('*')
-                    .eq('account_id', session.account_id)
-                    .single();
-
-                if (customerError) throw customerError;
-
-                // Fetch profile picture from accounts table
-                const { data: accountData } = await supabase
-                    .from('accounts')
-                    .select('ProfilePicuture')
-                    .eq('account_id', session.account_id)
-                    .single();
-
-                profileData = {
-                    ...customerData,
-                    role: 'customer',
-                    ProfilePicuture: accountData?.ProfilePicuture || null
-                };
+            if (managerError) {
+                console.error('❌ Manager fetch error:', managerError);
+                throw managerError;
             }
 
-            setProfile(profileData);
-            setFormData(profileData);
-        } catch (err) {
-            console.error('Error fetching profile:', err);
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: 'Failed to load profile: ' + err.message
-            });
-        } finally {
-            setLoading(false);
+            if (!managerData) {
+                console.warn('⚠️ No manager data found');
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Profile Not Found',
+                    text: 'No manager profile found for your account.'
+                });
+                setLoading(false);
+                return;
+            }
+
+            const { data: profilesData } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.account_id)
+                .maybeSingle();
+
+            const { data: accountData } = await supabase
+                .from('accounts')
+                .select('ProfilePicuture')
+                .eq('account_id', session.account_id)
+                .maybeSingle();
+
+            const fullName = profilesData?.full_name || managerData.manager_name || '';
+            const nameParts = fullName.split(' ');
+
+            profileData = {
+                account_id: managerData.account_id,
+                manager_id: managerData.manager_id,
+                first_name: nameParts[0] || '',
+                last_name: nameParts.slice(1).join(' ') || '',
+                middle_name: null,
+                email: profilesData?.email || managerData.email,
+                contact_number: profilesData?.phone || '',
+                birthdate: null,
+                gender: profilesData?.Gender || null,
+                username: null,
+                password: managerData.password,
+                role: 'manager',
+                ProfilePicuture: accountData?.ProfilePicuture || null
+            };
+        } else if (userRole === 'admin' || userRole === 'superadmin') {
+            const { data: adminData, error: adminError } = await supabase
+                .from('admin')
+                .select('*')
+                .eq('account_id', session.account_id)
+                .maybeSingle();
+
+            if (adminError) {
+                console.error('❌ Admin fetch error:', adminError);
+                throw adminError;
+            }
+
+            if (!adminData) {
+                console.warn('⚠️ No admin data found');
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Profile Not Found',
+                    text: 'No admin profile found for your account.'
+                });
+                setLoading(false);
+                return;
+            }
+
+            const { data: profilesData } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.account_id)
+                .maybeSingle();
+
+            const { data: accountData } = await supabase
+                .from('accounts')
+                .select('ProfilePicuture')
+                .eq('account_id', session.account_id)
+                .maybeSingle();
+
+            const fullName = profilesData?.full_name || adminData.admin_name || '';
+            const nameParts = fullName.split(' ');
+
+            profileData = {
+                account_id: adminData.account_id,
+                admin_id: adminData.admin_id,
+                first_name: nameParts[0] || '',
+                last_name: nameParts[1] || '',
+                middle_name: nameParts[2] || null,
+                email: profilesData?.email || adminData.email,
+                contact_number: profilesData?.phone || '',
+                birthdate: null,
+                gender: profilesData?.Gender || null,
+                username: null,
+                password: adminData.password,
+                role: userRole,
+                ProfilePicuture: accountData?.ProfilePicuture || null
+            };
+        } else {
+            // CUSTOMER role
+            const { data: customerData, error: customerError } = await supabase
+                .from('customer')
+                .select('*')
+                .eq('account_id', session.account_id)
+                .maybeSingle();
+
+            if (customerError) {
+                console.error('❌ Customer fetch error:', customerError);
+                throw customerError;
+            }
+
+            if (!customerData) {
+                console.warn('⚠️ No customer data found');
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Profile Not Found',
+                    text: 'No customer profile found for your account.'
+                });
+                setLoading(false);
+                return;
+            }
+
+            const { data: accountData } = await supabase
+                .from('accounts')
+                .select('ProfilePicuture')
+                .eq('account_id', session.account_id)
+                .maybeSingle();
+
+            profileData = {
+                account_id: customerData.account_id,
+                customer_id: customerData.customer_id,
+                first_name: customerData.first_name,
+                middle_name: customerData.middle_name,
+                last_name: customerData.last_name,
+                email: customerData.email,
+                contact_number: customerData.contact_number,
+                birthdate: customerData.birthdate,
+                gender: customerData.gender,
+                username: customerData.username,
+                password: customerData.password,
+                role: 'customer',
+                ProfilePicuture: accountData?.ProfilePicuture || null
+            };
         }
-    };
+
+        console.log('✅ Profile data loaded:', profileData);
+        setProfile(profileData);
+        setFormData(profileData);
+        
+    } catch (err) {
+        console.error('❌ Error fetching profile:', err);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Failed to load profile: ' + err.message
+        });
+    } finally {
+        setLoading(false);
+    }
+};
 const handleDeleteAccount = async () => {
     const result = await Swal.fire({
         icon: 'warning',
@@ -297,66 +344,7 @@ const handleDeleteAccount = async () => {
     }
 };
 
-const handleDeactivateAccount = async () => {
-    const result = await Swal.fire({
-        icon: 'info',
-        title: 'Deactivate Account?',
-        text: 'Your account will be deactivated. You can reactivate it later by logging in.',
-        showCancelButton: true,
-        confirmButtonText: 'Yes, Deactivate',
-        confirmButtonColor: '#f59e0b',
-        cancelButtonText: 'Cancel'
-    });
 
-    if (!result.isConfirmed) return;
-
-    try {
-        const userRole = profile.role;
-
-        // Update status in role-specific tables
-        if (userRole === 'customer') {
-            await supabase
-                .from('customer')
-                .update({ status: 'deactivated' })
-                .eq('customer_id', profile.customer_id);
-        } else if (userRole === 'frontdesk') {
-            await supabase
-                .from('front_desk')
-                .update({ status: 'deactivated' })
-                .eq('frontdesk_id', profile.frontdesk_id);
-        } else if (userRole === 'manager') {
-            await supabase
-                .from('manager')
-                .update({ status: 'deactivated' })
-                .eq('manager_id', profile.manager_id);
-        }
-
-        // Update accounts table
-        await supabase
-            .from('accounts')
-            .update({ status: 'deactivated' })
-            .eq('account_id', profile.account_id);
-
-        localStorage.removeItem('userSession');
-
-        Swal.fire({
-            icon: 'success',
-            title: 'Account Deactivated',
-            text: 'Your account has been deactivated.',
-            timer: 2000
-        }).then(() => {
-            window.location.href = '/';
-        });
-
-    } catch (err) {
-        console.error('Error deactivating account:', err);
-        Swal.fire({
-            icon: 'error',
-            title: 'Deactivation Failed',
-            text: 'Failed to deactivate account: ' + err.message
-        });
-    }
-};
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
@@ -1045,13 +1033,6 @@ return (
                 <div className="pt-8 mt-8 border-t border-gray-200">
                     <p className="mb-4 text-sm font-semibold text-gray-700">Account Actions</p>
                     <div className="flex flex-wrap gap-3">
-                        <button
-                            onClick={handleDeactivateAccount}
-                            className="flex items-center gap-2 px-5 py-2.5 bg-amber-50 border-2 border-amber-300 text-amber-700 rounded-lg hover:bg-amber-100 hover:border-amber-400 transition-all duration-200 text-sm font-semibold shadow-sm"
-                        >
-                            <LogOut size={16} />
-                            Deactivate Account
-                        </button>
                         <button
                             onClick={handleDeleteAccount}
                             className="flex items-center gap-2 px-5 py-2.5 bg-red-50 border-2 border-red-300 text-red-700 rounded-lg hover:bg-red-100 hover:border-red-400 transition-all duration-200 text-sm font-semibold shadow-sm"
