@@ -243,18 +243,18 @@ export default function QRCheckInPage() {
     }
   };
 
-const handleSearch = async (query = searchQuery) => {
-  const searchTerm = String(query).trim();
-  if (!searchTerm) return;
+  const handleSearch = async (query = searchQuery) => {
+    const searchTerm = String(query).trim();
+    if (!searchTerm) return;
 
-  const found = reservations.find(r => r.reservation_no === searchTerm);
+    const found = reservations.find(r => r.reservation_no === searchTerm);
 
-  if (!found) {
-    // Show verification dialog
-const result = await Swal.fire({
-  icon: 'warning',
-  title: 'Double Check Required',
-  html: `
+    if (!found) {
+      // Show verification dialog
+      const result = await Swal.fire({
+        icon: 'warning',
+        title: 'Double Check Required',
+        html: `
     <div style="text-align: left;">
       <p style="margin-bottom: 15px;">Reservation number not found in the system.</p>
       <p style="margin-bottom: 10px;"><strong>Scanned/Entered:</strong></p>
@@ -271,128 +271,128 @@ const result = await Swal.fire({
       </ul>
     </div>
   `,
-  input: 'text',
-  inputLabel: 'Re-type or correct the Reservation Number',
-  inputValue: searchTerm,
-  inputPlaceholder: 'Enter reservation number',
-  showCancelButton: false,  // TANGGALIN ANG CANCEL BUTTON
-  confirmButtonText: 'OK',  // PALITAN NG "OK"
-  confirmButtonColor: '#3085d6',
-  allowOutsideClick: true,  // PWEDE NA MAG-CLICK OUTSIDE
-  allowEscapeKey: true,      // PWEDE NA ESC KEY
-  inputValidator: (value) => {
-    if (!value || !value.trim()) {
-      return 'Please enter a reservation number';
-    }
-  },
-  preConfirm: async (value) => {
-    const trimmedValue = value.trim();
-    const recheckFound = reservations.find(r => r.reservation_no === trimmedValue);
+        input: 'text',
+        inputLabel: 'Re-type or correct the Reservation Number',
+        inputValue: searchTerm,
+        inputPlaceholder: 'Enter reservation number',
+        showCancelButton: false,  // TANGGALIN ANG CANCEL BUTTON
+        confirmButtonText: 'OK',  // PALITAN NG "OK"
+        confirmButtonColor: '#3085d6',
+        allowOutsideClick: true,  // PWEDE NA MAG-CLICK OUTSIDE
+        allowEscapeKey: true,      // PWEDE NA ESC KEY
+        inputValidator: (value) => {
+          if (!value || !value.trim()) {
+            return 'Please enter a reservation number';
+          }
+        },
+        preConfirm: async (value) => {
+          const trimmedValue = value.trim();
+          const recheckFound = reservations.find(r => r.reservation_no === trimmedValue);
 
-    if (!recheckFound) {
-      Swal.showValidationMessage('Reservation number still not found. Please check again.');
-      return false;
-    }
+          if (!recheckFound) {
+            Swal.showValidationMessage('Reservation number still not found. Please check again.');
+            return false;
+          }
 
-    return recheckFound;
-  }
-});
-
-    if (result.isConfirmed && result.value) {
-      const foundReservation = result.value;
-      
-      // Update search query
-      setSearchQuery(foundReservation.reservation_no);
-
-      // Check status and handle accordingly
-      if (foundReservation.status === "ongoing") {
-        const viewResult = await Swal.fire({
-          icon: 'info',
-          title: 'Reservation Ongoing',
-          text: 'This reservation is currently ongoing.',
-          showCancelButton: true,
-          confirmButtonText: 'View Details',
-          cancelButtonText: 'Close',
-          confirmButtonColor: '#3085d6',
-          cancelButtonColor: '#6b7280'
-        });
-
-        if (viewResult.isConfirmed) {
-          setSelectedReservation(foundReservation);
-          setShowSuggestions(false);
+          return recheckFound;
         }
-        return;
-      }
+      });
 
-      if (foundReservation.status !== "pending" && foundReservation.status !== "approved") {
-        const viewResult = await Swal.fire({
-          icon: 'warning',
-          title: 'Invalid Status',
-          text: `Reservation status: ${foundReservation.status}`,
-          showCancelButton: true,
-          confirmButtonText: 'View Details',
-          cancelButtonText: 'Close',
-          confirmButtonColor: '#3085d6',
-          cancelButtonColor: '#6b7280'
-        });
+      if (result.isConfirmed && result.value) {
+        const foundReservation = result.value;
 
-        if (viewResult.isConfirmed) {
-          setSelectedReservation(foundReservation);
-          setShowSuggestions(false);
+        // Update search query
+        setSearchQuery(foundReservation.reservation_no);
+
+        // Check status and handle accordingly
+        if (foundReservation.status === "ongoing") {
+          const viewResult = await Swal.fire({
+            icon: 'info',
+            title: 'Reservation Ongoing',
+            text: 'This reservation is currently ongoing.',
+            showCancelButton: true,
+            confirmButtonText: 'View Details',
+            cancelButtonText: 'Close',
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#6b7280'
+          });
+
+          if (viewResult.isConfirmed) {
+            setSelectedReservation(foundReservation);
+            setShowSuggestions(false);
+          }
+          return;
         }
-        return;
+
+        if (foundReservation.status !== "pending" && foundReservation.status !== "approved") {
+          const viewResult = await Swal.fire({
+            icon: 'warning',
+            title: 'Invalid Status',
+            text: `Reservation status: ${foundReservation.status}`,
+            showCancelButton: true,
+            confirmButtonText: 'View Details',
+            cancelButtonText: 'Close',
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#6b7280'
+          });
+
+          if (viewResult.isConfirmed) {
+            setSelectedReservation(foundReservation);
+            setShowSuggestions(false);
+          }
+          return;
+        }
+
+        // If pending or approved, show directly
+        setSelectedReservation(foundReservation);
+        setShowSuggestions(false);
       }
-
-      // If pending or approved, show directly
-      setSelectedReservation(foundReservation);
-      setShowSuggestions(false);
+      return;
     }
-    return;
-  }
 
-  // If found on first try, check status
-  if (found.status === "ongoing") {
-    const viewResult = await Swal.fire({
-      icon: 'info',
-      title: 'Reservation Ongoing',
-      text: 'This reservation is currently ongoing.',
-      showCancelButton: true,
-      confirmButtonText: 'View Details',
-      cancelButtonText: 'Close',
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#6b7280'
-    });
+    // If found on first try, check status
+    if (found.status === "ongoing") {
+      const viewResult = await Swal.fire({
+        icon: 'info',
+        title: 'Reservation Ongoing',
+        text: 'This reservation is currently ongoing.',
+        showCancelButton: true,
+        confirmButtonText: 'View Details',
+        cancelButtonText: 'Close',
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#6b7280'
+      });
 
-    if (viewResult.isConfirmed) {
-      setSelectedReservation(found);
-      setShowSuggestions(false);
+      if (viewResult.isConfirmed) {
+        setSelectedReservation(found);
+        setShowSuggestions(false);
+      }
+      return;
     }
-    return;
-  }
 
-  if (found.status !== "pending" && found.status !== "approved") {
-    const viewResult = await Swal.fire({
-      icon: 'warning',
-      title: 'Invalid Status',
-      text: `Reservation status: ${found.status}`,
-      showCancelButton: true,
-      confirmButtonText: 'View Details',
-      cancelButtonText: 'Close',
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#6b7280'
-    });
+    if (found.status !== "pending" && found.status !== "approved") {
+      const viewResult = await Swal.fire({
+        icon: 'warning',
+        title: 'Invalid Status',
+        text: `Reservation status: ${found.status}`,
+        showCancelButton: true,
+        confirmButtonText: 'View Details',
+        cancelButtonText: 'Close',
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#6b7280'
+      });
 
-    if (viewResult.isConfirmed) {
-      setSelectedReservation(found);
-      setShowSuggestions(false);
+      if (viewResult.isConfirmed) {
+        setSelectedReservation(found);
+        setShowSuggestions(false);
+      }
+      return;
     }
-    return;
-  }
 
-  // If pending or approved, show directly
-  setSelectedReservation(found);
-  setShowSuggestions(false);
-};
+    // If pending or approved, show directly
+    setSelectedReservation(found);
+    setShowSuggestions(false);
+  };
   const handleSuggestionClick = (reservation) => {
     setSearchQuery(reservation.reservation_no);
     setShowSuggestions(false);
@@ -775,10 +775,10 @@ const result = await Swal.fire({
             </div>
 
             <button
-              onClick={handleCheckInClick}
-              className="w-full py-3 mt-4 font-semibold text-white transition bg-green-600 rounded-xl hover:bg-green-700"
+              onClick={() => setSelectedReservation(null)}
+              className="w-full py-3 mt-4 font-semibold text-white transition bg-gray-800 rounded-xl hover:bg-gray-900"
             >
-              Check-in Customer
+              Close
             </button>
           </div>
         </div>
