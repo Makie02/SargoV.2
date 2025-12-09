@@ -14,7 +14,40 @@ export default function CancelBookings() {
   const [syncing, setSyncing] = useState(false);
   const [referenceNumber, setReferenceNumber] = useState('');
   const [syncedPayments, setSyncedPayments] = useState([]);
+  const ADMIN_ROLES = ['admin', 'frontdesk', 'manager'];
+const isAdminRole = (role) => ADMIN_ROLES.includes(role);
+const getPaymentAmount = (booking) => {
+  if (!booking) return 0;
+  if (booking.payment_type === 'Full Payment') {
+    return booking.full_amount || 0;
+  } else if (booking.payment_type === 'Half Payment') {
+    return booking.half_amount || 0;
+  }
+  return 0;
+};
+
+const normalizePaymentMethod = (method) => {
+  if (!method) return 'cash';
   
+  const methodLower = method.toLowerCase();
+  
+  const methodMap = {
+    'cash': 'cash',
+    'gcash': 'gcash',
+    'card': 'card',
+    'credit_card': 'card',
+    'debit_card': 'card',
+    'credit card': 'card',
+    'debit card': 'card',
+    'online': 'online',
+    'e-wallet': 'online',
+    'ewallet': 'online',
+    'bank_transfer': 'online',
+    'bank transfer': 'online'
+  };
+  
+  return methodMap[methodLower] || 'cash';
+};
   // Edit payment states
   const [editPaymentType, setEditPaymentType] = useState('');
   const [editAmount, setEditAmount] = useState('');
@@ -32,45 +65,54 @@ useEffect(() => {
     setCurrentAccountId(session.account_id);
   }
 }, []);
-  const fetchCancelledBookings = async () => {
-    setLoading(true);
-    try {
-      const { data: reservationData, error: reservationError } = await supabase
-        .from('reservation')
-        .select('*')
-        .eq('status', 'cancelled')
-        .order('reservation_date', { ascending: false })
-        .order('start_time', { ascending: true });
+const fetchCancelledBookings = async () => {
+  setLoading(true);
+  try {
+    const { data: reservationData, error: reservationError } = await supabase
+      .from('reservation')
+      .select('*')
+      .eq('status', 'cancelled')
+      .order('reservation_date', { ascending: false })
+      .order('start_time', { ascending: true });
 
-      if (reservationError) throw reservationError;
+    if (reservationError) throw reservationError;
 
-      // Fetch accounts
-      const { data: accountsData, error: accountsError } = await supabase
-        .from('accounts')
-        .select('account_id, email');
+    // Fetch accounts
+    const { data: accountsData, error: accountsError } = await supabase
+      .from('accounts')
+      .select('account_id, email');
 
-      // Fetch customers separately
-      const { data: customersData, error: customersError } = await supabase
-        .from('customer')
-        .select('customer_id, account_id, first_name, last_name, middle_name');
+    // Fetch customers separately
+    const { data: customersData, error: customersError } = await supabase
+      .from('customer')
+      .select('customer_id, account_id, first_name, last_name, middle_name');
 
-      if (accountsError) throw accountsError;
-      if (customersError) throw customersError;
+    // Fetch billiard tables
+    const { data: tablesData, error: tablesError } = await supabase
+      .from('billiard_table')
+      .select('table_id, table_name');
 
-      // Join manually
-      const combinedData = reservationData.map(reservation => {
-        const account = accountsData.find(acc => acc.account_id === reservation.account_id);
-        const customer = customersData.find(c => c.account_id === reservation.account_id);
-        return {
-          ...reservation,
-          accounts: {
-            ...account,
-            customer: customer || null
-          }
-        };
-      });
+    if (accountsError) throw accountsError;
+    if (customersError) throw customersError;
+    if (tablesError) throw tablesError;
 
-      setCancelledBookings(combinedData);
+    // Join manually
+    const combinedData = reservationData.map(reservation => {
+      const account = accountsData.find(acc => acc.account_id === reservation.account_id);
+      const customer = customersData.find(c => c.account_id === reservation.account_id);
+      const table = tablesData.find(t => t.table_id === reservation.table_id);
+      
+      return {
+        ...reservation,
+        accounts: {
+          ...account,
+          customer: customer || null
+        },
+        table_name: table?.table_name || `Table ${reservation.table_id}`
+      };
+    });
+
+    setCancelledBookings(combinedData);
 
       // Check synced payments
       const { data: syncedData } = await supabase
@@ -312,22 +354,13 @@ useEffect(() => {
         return;
       }
 
-      // Validate payment method
-      let paymentMethod = (selectedBooking.paymentMethod || selectedBooking.payment_method || 'cash').toLowerCase();
-      const validMethods = ['cash', 'gcash', 'card', 'online'];
-      if (!validMethods.includes(paymentMethod)) {
-        paymentMethod = 'cash';
-      }
+    // Normalize payment method
+      const paymentMethod = normalizePaymentMethod(
+        selectedBooking.paymentMethod || selectedBooking.payment_method
+      );
 
-      let totalAmount = 0;
-
-      if (selectedBooking.payment_type === 'Full Payment') {
-        totalAmount = selectedBooking.full_amount || selectedBooking.total_bill || 0;
-      } else if (selectedBooking.payment_type === 'Half Payment') {
-        totalAmount = selectedBooking.half_amount || 0;
-      } else if (selectedBooking.payment_type === 'Partial Payment') {
-        totalAmount = selectedBooking.partial_amount || 0;
-      }
+      // Get total amount using helper
+      const totalAmount = getPaymentAmount(selectedBooking);
 
       const { data, error } = await supabase
         .from('payment')
@@ -419,31 +452,33 @@ useEffect(() => {
 <p className="text-sm text-gray-600">
   {(() => {
     const filteredCount = cancelledBookings.filter((booking) => {
-      if (userRole === 'admin' || userRole === 'superadmin' || userRole === 'frontdesk' || userRole === 'manager') {
+      if (isAdminRole(userRole)) {
         return true;
       }
       return booking.account_id === currentAccountId;
     }).length;
     return `${filteredCount} cancelled booking(s)`;
   })()}
-</p>          </div>
+</p>   
+
+  </div>
         </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto">
-  {cancelledBookings.length > 0 ? (
+ {cancelledBookings.length > 0 ? (
     cancelledBookings
       // Filter bookings based on role
       .filter((booking) => {
-        if (userRole === 'admin' || userRole === 'superadmin') {
-          return true; // Admin sees all
+        if (isAdminRole(userRole)) {
+          return true; // All admin roles see all bookings
         }
         // Customer only sees their own cancelled bookings
         return booking.account_id === currentAccountId;
       })
       .map((booking) => {
         const customerName = `${booking.accounts?.customer?.first_name || ''} ${booking.accounts?.customer?.last_name || ''}`.trim() || 'N/A';
-        const isSynced = syncedPayments.includes(booking.id);
-const isAdmin = userRole === 'admin' || userRole === 'superadmin' || userRole === 'frontdesk' || userRole === 'manager';
+      const isSynced = syncedPayments.includes(booking.id);
+const isAdmin = isAdminRole(userRole);
 
         return (
           <div key={booking.id} className="p-5 transition-all border-2 border-red-200 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl hover:shadow-lg">
@@ -454,7 +489,7 @@ const isAdmin = userRole === 'admin' || userRole === 'superadmin' || userRole ==
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-gray-900">{customerName}</h3>
-                  <p className="text-sm text-gray-600">Table {booking.table_id}</p>
+  <p className="text-sm text-gray-600">{booking.table_name}</p>
                 </div>
               </div>
               <span className="px-4 py-1.5 bg-red-500 text-white rounded-full text-sm font-bold shadow-md">
@@ -475,22 +510,14 @@ const isAdmin = userRole === 'admin' || userRole === 'superadmin' || userRole ==
               <p className="text-sm text-gray-700">
                 <span className="font-semibold">Payment Type:</span> {booking.payment_type || 'N/A'}
               </p>
-              <div className="p-2 mt-2 bg-red-100 border border-red-300 rounded-lg">
-                <p className="text-sm text-red-800">
-                  <span className="font-semibold">Amount Paid:</span> ₱
-                  {booking.payment_type === 'Full Payment' 
-                    ? (booking.full_amount || 0)
-                    : booking.payment_type === 'Half Payment'
-                    ? (booking.half_amount || 0)
-                    : booking.payment_type === 'Partial Payment'
-                    ? (booking.partial_amount || 0)
-                    : 0
-                  }
-                </p>
-              </div>
+             <div className="p-2 mt-2 bg-red-100 border border-red-300 rounded-lg">
+  <p className="text-sm text-red-800">
+    <span className="font-semibold">Amount Paid:</span> ₱{getPaymentAmount(booking)}
+  </p>
+</div>
             </div>
 
-        {/* View Details - always visible */}
+       {/* View Details - always visible */}
             <button
               onClick={() => handleViewDetails(booking)}
               className="flex items-center justify-center w-full gap-2 px-3 py-2 mb-2 text-sm font-semibold text-red-700 transition-all bg-white border-2 border-red-300 rounded-lg hover:bg-red-50"
@@ -499,40 +526,39 @@ const isAdmin = userRole === 'admin' || userRole === 'superadmin' || userRole ==
               View Details
             </button>
             
-            {/* Edit button - visible for admin/frontdesk/manager */}
+            {/* Admin-only buttons */}
             {isAdmin && (
-              <button
-                onClick={() => handleEditClick(booking)}
-                className="flex items-center justify-center w-full gap-2 px-3 py-2 mb-2 text-sm font-semibold text-white transition-all bg-blue-500 rounded-lg hover:bg-blue-600"
-              >
-                <Edit size={16} />
-                Edit Payment
-              </button>
-            )}
-            
-            {/* Sync & Delete buttons - visible for admin/frontdesk/manager */}
-            {isAdmin && (
-              <div className="grid grid-cols-2 gap-2">
+              <>
                 <button
-                  onClick={() => handleSyncPayment(booking)}
-                  disabled={syncing || isSynced}
-                  className={`px-3 py-2 rounded-lg transition-all font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isSynced
-                      ? 'bg-gray-400 text-white cursor-not-allowed'
-                      : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-600 hover:to-emerald-600'
-                  }`}
+                  onClick={() => handleEditClick(booking)}
+                  className="flex items-center justify-center w-full gap-2 px-3 py-2 mb-2 text-sm font-semibold text-white transition-all bg-blue-500 rounded-lg hover:bg-blue-600"
                 >
-                  <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-                  {isSynced ? 'Synced' : 'Sync'}
+                  <Edit size={16} />
+                  Edit Payment
                 </button>
-                <button
-                  onClick={() => handleDelete(booking)}
-                  className="flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold text-white transition-all rounded-lg bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700"
-                >
-                  <Trash2 size={16} />
-                  Delete
-                </button>
-              </div>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => handleSyncPayment(booking)}
+                    disabled={syncing || isSynced}
+                    className={`px-3 py-2 rounded-lg transition-all font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isSynced
+                        ? 'bg-gray-400 text-white cursor-not-allowed'
+                        : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-600 hover:to-emerald-600'
+                    }`}
+                  >
+                    <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+                    {isSynced ? 'Synced' : 'Sync'}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(booking)}
+                    className="flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold text-white transition-all rounded-lg bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700"
+                  >
+                    <Trash2 size={16} />
+                    Delete
+                  </button>
+                </div>
+              </>
             )}
           </div>
         );
@@ -773,19 +799,12 @@ const isAdmin = userRole === 'admin' || userRole === 'superadmin' || userRole ==
                   <p className="font-bold text-gray-900">Table {selectedBooking.table_id}</p>
                 </div>
 
-                <div className="p-4 border-2 border-red-200 rounded-lg bg-red-50">
-                  <p className="mb-1 text-sm text-red-600">Refund Amount</p>
-                  <p className="text-3xl font-bold text-red-900">
-                    ₱{selectedBooking.payment_type === 'Full Payment' 
-                      ? (selectedBooking.full_amount || 0)
-                      : selectedBooking.payment_type === 'Half Payment'
-                      ? (selectedBooking.half_amount || 0)
-                      : selectedBooking.payment_type === 'Partial Payment'
-                      ? (selectedBooking.partial_amount || 0)
-                      : 0
-                    }
-                  </p>
-                </div>
+           <div className="p-4 border-2 border-red-200 rounded-lg bg-red-50">
+  <p className="mb-1 text-sm text-red-600">Refund Amount</p>
+  <p className="text-3xl font-bold text-red-900">
+    ₱{getPaymentAmount(selectedBooking)}
+  </p>
+</div>
 
                 <div>
                   <label className="block mb-2 text-sm font-semibold text-gray-700">
