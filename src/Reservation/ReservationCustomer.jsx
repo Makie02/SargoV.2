@@ -635,7 +635,15 @@ const handleConfirmReschedule = async () => {
     const newTotalBill =
       parseFloat(selectedTable.info.price) * selectedDuration.hours;
 
-    // ✅ CREATE RESCHEDULE REQUEST (NOT UPDATE RESERVATION YET)
+    // ✅ UPDATE MAIN RESERVATION STATUS TO "RESCHEDULED"
+    const { error: updateError } = await supabase
+      .from("reservation")
+      .update({ status: "rescheduled" })
+      .eq("id", rescheduleData.id);
+
+    if (updateError) throw updateError;
+
+    // ✅ CREATE RESCHEDULE REQUEST
     const { error: insertError } = await supabase
       .from("reschedule_request")
       .insert({
@@ -664,7 +672,7 @@ const handleConfirmReschedule = async () => {
     setShowReschedule(false);
     setRescheduleData(null);
     setSelectedTable(null);
-    fetchReservations();
+    fetchReservations(); // ✅ This will refresh and show under "rescheduled" tab
   } catch (error) {
     console.error("Error creating reschedule request:", error);
     Swal.fire({
