@@ -83,12 +83,15 @@ const ManagerDashboard = () => {
       // Fetch table statuses from billiard_table_info
       const { data: tablesData, error: tablesError } = await supabase
         .from('billiard_table_info')
-        .select('*, billiard_table(table_name)')
+        .select('*')
         .order('table_id', { ascending: true });
 
-      if (tablesError) throw tablesError;
-      setTableStatuses(tablesData || []);
-
+    if (tablesError) {
+  console.error('❌ Error fetching table statuses:', tablesError);
+  throw tablesError;
+}
+console.log('✅ Table statuses loaded:', tablesData?.length);
+setTableStatuses(tablesData || []);
       // Calculate daily revenue from today's reservations
       const { data: revenueData, error: revenueError } = await supabase
         .from('reservation')
@@ -101,7 +104,9 @@ const ManagerDashboard = () => {
       const totalRevenue = revenueData?.reduce((sum, item) => sum + (item.total_bill || 0), 0) || 0;
       setDailyRevenue(totalRevenue);
 
- const { data: rescheduleData, error: rescheduleError } = await supabase
+  console.log('🔍 Starting reschedule fetch...');
+
+const { data: rescheduleData, error: rescheduleError } = await supabase
   .from('reschedule_request')
   .select(`
     *,
@@ -120,28 +125,39 @@ const ManagerDashboard = () => {
   .eq('status', 'pending')
   .order('created_at', { ascending: false });
 
-    if (!rescheduleError && rescheduleData) {
-  // Add this line to check raw data
-  console.log('📊 Raw Reschedule Data:', JSON.stringify(rescheduleData, null, 2));
+console.log('📊 Reschedule Query Result:', { 
+  error: rescheduleError, 
+  dataCount: rescheduleData?.length,
+  rawData: rescheduleData 
+});
+
+if (rescheduleError) {
+  console.error('❌ Error fetching reschedules:', rescheduleError);
+  setRescheduleRequests([]);
+} else if (rescheduleData && rescheduleData.length > 0) {
+  console.log('✅ Found', rescheduleData.length, 'reschedule requests');
   
-  // Fetch customer details separately for each reschedule request
   const enrichedData = await Promise.all(
     rescheduleData.map(async (request) => {
-      console.log('🔍 Processing request:', request.id, 'Reservation ID:', request.reservation_id);
+      console.log('🔍 Processing request ID:', request.id);
+      console.log('   - Account ID:', request.account_id);
+      console.log('   - Reservation data:', request.reservation);
       
-      const { data: customerData } = await supabase
+      const { data: customerData, error: customerError } = await supabase
         .from('customer')
         .select('first_name, middle_name, last_name, email')
         .eq('account_id', request.account_id)
         .single();
       
-      // Combine name fields
+      if (customerError) {
+        console.error('❌ Error fetching customer for account_id:', request.account_id, customerError);
+      } else {
+        console.log('✅ Customer found:', customerData);
+      }
+      
       const fullName = customerData 
         ? `${customerData.first_name} ${customerData.middle_name ? customerData.middle_name + ' ' : ''}${customerData.last_name}`.trim()
         : 'Unknown';
-      
-      console.log('👤 Customer:', fullName, customerData);
-      console.log('📋 Reservation data:', request.reservation);
       
       return {
         ...request,
@@ -154,10 +170,14 @@ const ManagerDashboard = () => {
   );
   
   console.log('✅ Final Enriched Data:', enrichedData);
-  setRescheduleRequests(enrichedData || []);
-} else if (rescheduleError) {
-        console.error('❌ Error fetching reschedules:', rescheduleError);
-      }
+  console.log('📊 Setting', enrichedData.length, 'requests to state');
+  setRescheduleRequests(enrichedData);
+} else {
+  console.log('⚠️ No reschedule data found');
+  setRescheduleRequests([]);
+}
+
+console.log('✅ Reschedule fetch complete');
 
       // Fetch tables for names
       const { data: tablesDataList, error: tablesListError } = await supabase
